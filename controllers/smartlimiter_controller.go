@@ -22,23 +22,24 @@ import (
 	"sync"
 
 	log "github.com/sirupsen/logrus"
+	"slime.io/slime/slime-framework/apis/config/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"slime.io/slime/modules/limiter/controllers/multicluster"
 	"slime.io/slime/slime-framework/model/source/aggregate"
 	"slime.io/slime/slime-framework/model/source/k8s"
-	"slime.io/slime/modules/limiter/controllers/multicluster"
 
 	cmap "github.com/orcaman/concurrent-map"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	microserviceslimeiov1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
 	"slime.io/slime/slime-framework/bootstrap"
 	event_source "slime.io/slime/slime-framework/model/source"
-	microserviceslimeiov1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
 )
 
 // SmartLimiterReconciler reconciles a SmartLimiter object
@@ -46,6 +47,7 @@ type SmartLimiterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
+	cfg    *v1alpha1.Limiter
 	env    *bootstrap.Environment
 	scheme *runtime.Scheme
 
@@ -109,7 +111,7 @@ func (r *SmartLimiterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func NewReconciler(mgr ctrl.Manager, env *bootstrap.Environment) *SmartLimiterReconciler {
+func NewReconciler(cfg *v1alpha1.Limiter, mgr ctrl.Manager, env *bootstrap.Environment) *SmartLimiterReconciler {
 	log := log.WithField("controllers", "SmartLimiter")
 	eventChan := make(chan event_source.Event)
 	src := &aggregate.Source{}
@@ -120,7 +122,7 @@ func NewReconciler(mgr ctrl.Manager, env *bootstrap.Environment) *SmartLimiterRe
 	}
 	src.AppendSource(ms)
 	f := ms.SourceClusterHandler()
-	if env.Config.Limiter.Multicluster {
+	if cfg.Multicluster {
 		mc := multicluster.New(env, []func(*kubernetes.Clientset){f}, nil)
 		go mc.Run()
 	}
