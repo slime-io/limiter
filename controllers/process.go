@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"reflect"
 
-	log "github.com/sirupsen/logrus"
 	networking "istio.io/api/networking/v1alpha3"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
