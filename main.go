@@ -17,8 +17,8 @@ limitations under the License.
 package main
 
 import (
+	"slime.io/slime/framework/model"
 	"slime.io/slime/modules/limiter/module"
-	"slime.io/slime/slime-framework/model"
 )
 
 func main() {

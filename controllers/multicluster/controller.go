@@ -19,7 +19,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
-	"slime.io/slime/slime-framework/bootstrap"
+	"slime.io/slime/framework/bootstrap"
 )
 
 const (
