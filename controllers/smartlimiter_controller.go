@@ -21,7 +21,6 @@ import (
 	"reflect"
 	"sync"
 
-	log "github.com/sirupsen/logrus"
 	"slime.io/slime/framework/apis/config/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
