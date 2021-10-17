@@ -17,12 +17,13 @@ require (
 	k8s.io/apimachinery v0.20.2
 	k8s.io/client-go v0.17.2
 	sigs.k8s.io/controller-runtime v0.5.0
-	slime.io/slime/slime-framework v0.0.0-00010101000000-000000000000
+	slime.io/slime/framework v0.0.0-00010101000000-000000000000
 )
 
 replace (
 	k8s.io/api => k8s.io/api v0.17.2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.17.2
-	slime.io/slime/slime-framework => github.com/slime-io/slime/slime-framework v0.0.0-20211014020149-a1fd0b4fc677
-//slime.io/slime/slime-framework => ../slime/slime-framework
+
+	//slime.io/slime/framework => github.com/slime-io/slime/framework v0.0.0-20211014020149-a1fd0b4fc677
+	slime.io/slime/framework => ../slime/framework
 )

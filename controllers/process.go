@@ -18,10 +18,10 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"slime.io/slime/slime-framework/apis/networking/v1alpha3"
-	"slime.io/slime/slime-framework/model"
-	event_source "slime.io/slime/slime-framework/model/source"
-	"slime.io/slime/slime-framework/util"
+	"slime.io/slime/framework/apis/networking/v1alpha3"
+	"slime.io/slime/framework/model"
+	event_source "slime.io/slime/framework/model/source"
+	"slime.io/slime/framework/util"
 	microservicev1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
 )
 
