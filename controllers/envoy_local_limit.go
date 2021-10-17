@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"slime.io/slime/slime-framework/controllers"
-	"slime.io/slime/slime-framework/util"
-	microservicev1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
+	"slime.io/slime/framework/controllers"
+	"slime.io/slime/framework/util"
+	limiterapiv1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
 
 	envoy_config_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoy_extensions_filters_http_local_ratelimit_v3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/local_ratelimit/v3"
@@ -24,14 +24,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func (r *SmartLimiterReconciler) GenerateEnvoyLocalLimit(rateLimitConf microservicev1alpha1.SmartLimiterSpec,
-	material map[string]string, instance *microservicev1alpha1.SmartLimiter) (
-	map[string]*networking.EnvoyFilter, map[string]*microservicev1alpha1.SmartLimitDescriptors) {
+func (r *SmartLimiterReconciler) GenerateEnvoyLocalLimit(rateLimitConf limiterapiv1alpha1.SmartLimiterSpec,
+	material map[string]string, instance *limiterapiv1alpha1.SmartLimiter) (
+	map[string]*networking.EnvoyFilter, map[string]*limiterapiv1alpha1.SmartLimitDescriptors) {
 
 	materialInterface := util.MapToMapInterface(material)
 
 	setsEnvoyFilter := make(map[string]*networking.EnvoyFilter)
-	setsSmartLimitDescriptor := make(map[string]*microservicev1alpha1.SmartLimitDescriptors)
+	setsSmartLimitDescriptor := make(map[string]*limiterapiv1alpha1.SmartLimitDescriptors)
 	host := util.UnityHost(instance.Name, instance.Namespace)
 	var sets []*networking.Subset
 	if controllers.HostSubsetMapping.Get(host) != nil {
@@ -51,13 +51,13 @@ func (r *SmartLimiterReconciler) GenerateEnvoyLocalLimit(rateLimitConf microserv
 	sets = append(sets, &networking.Subset{Name: util.Wellkonw_BaseSet})
 	for _, set := range sets {
 		if setDescriptor, ok := rateLimitConf.Sets[set.Name]; ok {
-			descriptor := &microservicev1alpha1.SmartLimitDescriptors{}
+			descriptor := &limiterapiv1alpha1.SmartLimitDescriptors{}
 			for _, des := range setDescriptor.Descriptor_ {
-				setDes := &microservicev1alpha1.SmartLimitDescriptor{}
+				setDes := &limiterapiv1alpha1.SmartLimitDescriptor{}
 				if shouldUpdate, _ := util.CalculateTemplateBool(des.Condition, materialInterface); shouldUpdate {
 					if des.Action != nil {
 						if rateLimitValue, err := util.CalculateTemplate(des.Action.Quota, materialInterface); err == nil {
-							setDes.Action = &microservicev1alpha1.SmartLimitDescriptor_Action{
+							setDes.Action = &limiterapiv1alpha1.SmartLimitDescriptor_Action{
 								Quota:        fmt.Sprintf("%d", rateLimitValue),
 								FillInterval: des.Action.FillInterval,
 							}
@@ -86,7 +86,7 @@ func (r *SmartLimiterReconciler) GenerateEnvoyLocalLimit(rateLimitConf microserv
 	return setsEnvoyFilter, setsSmartLimitDescriptor
 }
 
-func descriptorsToEnvoyFilter(descriptor []*microservicev1alpha1.SmartLimitDescriptor, labels map[string]string) *networking.EnvoyFilter {
+func descriptorsToEnvoyFilter(descriptor []*limiterapiv1alpha1.SmartLimitDescriptor, labels map[string]string) *networking.EnvoyFilter {
 	ef := &networking.EnvoyFilter{
 		WorkloadSelector: &networking.WorkloadSelector{
 			Labels: labels,
