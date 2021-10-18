@@ -97,7 +97,7 @@ func (r *SmartLimiterReconciler) WatchSource(stop <-chan struct{}) {
 				switch e.EventType {
 				case event_source.Update, event_source.Add:
 					if _, err := r.Refresh(reconcile.Request{NamespacedName: e.Loc}, e.Info); err != nil {
-						fmt.Printf("error:%v", err)
+						log.Errorf("error:%v", err)
 					}
 				}
 			}
@@ -152,17 +152,12 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLim
 	if instance.Spec.Sets == nil {
 		return reconcile.Result{}, util.Error{M: "invalid rateLimit spec"}
 	}
-	rateLimitConf := instance.Spec
+	spec := instance.Spec
 
 	var efs map[string]*networking.EnvoyFilter
 	var descriptor map[string]*microservicev1alpha1.SmartLimitDescriptors
 
-	// TODO: Since the com.netease.local_flow_control has not yet been opened, this function is disabled
-	/*if backend == config.Limiter_netEaseLocalFlowControl {
-		ef, descriptor = r.GenerateNeteaseFlowControl(rateLimitConf, material, instance)
-	}*/
-
-	efs, descriptor = r.GenerateEnvoyLocalLimit(rateLimitConf, material, instance)
+	efs, descriptor = r.GenerateEnvoyFilters(spec, material, instance)
 	for k, ef := range efs {
 		var efcr *v1alpha3.EnvoyFilter
 		if k == util.Wellkonw_BaseSet {
