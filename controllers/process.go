@@ -8,7 +8,12 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"gopkg.in/yaml.v2"
+	v1 "k8s.io/api/core/v1"
 	"reflect"
+	event_source "slime.io/slime/framework/model/source"
+	"slime.io/slime/modules/limiter/model"
+	"strings"
 
 	networking "istio.io/api/networking/v1alpha3"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -18,19 +23,35 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"slime.io/slime/framework/apis/networking/v1alpha3"
-	"slime.io/slime/framework/model"
-	event_source "slime.io/slime/framework/model/source"
+	slime_model "slime.io/slime/framework/model"
 	"slime.io/slime/framework/util"
 	microservicev1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
 )
 
 func (r *SmartLimiterReconciler) getMaterial(loc types.NamespacedName) map[string]string {
 	if i, ok := r.metricInfo.Get(loc.Namespace + "/" + loc.Name); ok {
-		if ep, ok := i.(*model.Endpoints); ok {
+		if ep, ok := i.(*slime_model.Endpoints); ok {
 			return util.CopyMap(ep.Info)
 		}
 	}
 	return nil
+}
+func (r *SmartLimiterReconciler) WatchSource(stop <-chan struct{}) {
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case e := <-r.eventChan:
+				switch e.EventType {
+				case event_source.Update, event_source.Add:
+					if _, err := r.Refresh(reconcile.Request{NamespacedName: e.Loc}, e.Info); err != nil {
+						log.Errorf("error:%v", err)
+					}
+				}
+			}
+		}
+	}()
 }
 
 func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLimiterReconciler, obj *v1alpha3.EnvoyFilter) (reconcile.Result, error) {
@@ -87,34 +108,84 @@ func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLim
 	return reconcile.Result{}, nil
 }
 
-func (r *SmartLimiterReconciler) WatchSource(stop <-chan struct{}) {
-	go func() {
-		for {
-			select {
-			case <-stop:
-				return
-			case e := <-r.eventChan:
-				switch e.EventType {
-				case event_source.Update, event_source.Add:
-					if _, err := r.Refresh(reconcile.Request{NamespacedName: e.Loc}, e.Info); err != nil {
-						log.Errorf("error:%v", err)
-					}
-				}
+// TODO 这里是所有服务的全局限流策略的汇总, 如果删除怎么办 ？
+func refreshConfigMap(desc []*model.Descriptor,r *SmartLimiterReconciler,serviceLoc types.NamespacedName) error {
+
+	loc := getConfigMapNamespaceName()
+	found := &v1.ConfigMap{}
+	err := r.Client.Get(context.TODO(), loc, found)
+
+	if err != nil && errors.IsNotFound(err) {
+		configmap := generateConfigMap(desc)
+		if err = r.Client.Create(context.TODO(), configmap); err != nil {
+			log.Infof("creating new configmap in %s:%s err, %+v",loc.Namespace,loc.Name,err.Error())
+			return err
+		}
+	} else {
+		config := found.Data["config.yaml"]
+		ratelimitConfig := &model.RateLimitConfig{}
+		if err = yaml.Unmarshal([]byte(config),&ratelimitConfig); err != nil {
+			log.Infof("unmarshal ratelimitConfig err: %+v", err.Error())
+			return err
+		}
+
+		other := make ([]*model.Descriptor,0)
+		serviceInfo := fmt.Sprintf("%s.%s",serviceLoc.Name,serviceLoc.Namespace)
+		for _,item := range ratelimitConfig.Descriptors {
+			if !strings.Contains(item.Value,serviceInfo) {
+				other = append(other,item)
 			}
 		}
-	}()
+		other = append(other,desc...)
+		configmap := generateConfigMap(other)
+		if !reflect.DeepEqual(found.Data,configmap.Data) {
+			log.Infof("update configmap in %s:%s",loc.Namespace,loc.Name)
+			configmap.ResourceVersion = found.ResourceVersion
+			err = r.Client.Update(context.TODO(),configmap)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// TODO hard code
+func generateConfigMap(desc []*model.Descriptor) *v1.ConfigMap {
+
+	rateLimitConfig := &model.RateLimitConfig{
+		Domain:      "qingzhou",
+		Descriptors:  desc,
+	}
+	b, _ := yaml.Marshal(rateLimitConfig)
+	loc := getConfigMapNamespaceName()
+
+	configmap := &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: loc.Name,
+			Namespace: loc.Namespace,
+			Labels: map[string]string{
+				"app":"rate-limit",
+				"manager-by": "slime/limiter",
+			},
+		},
+		Data: map[string]string{
+			"config.yaml": string(b),
+		},
+	}
+	return configmap
 }
 
 func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[string]string) (reconcile.Result, error) {
 	_, ok := r.metricInfo.Get(request.Namespace + "/" + request.Name)
 	if !ok {
-		r.metricInfo.Set(request.Namespace+"/"+request.Name, &model.Endpoints{
+		r.metricInfo.Set(request.Namespace+"/"+request.Name, &slime_model.Endpoints{
 			Location: request.NamespacedName,
 			Info:     args,
 		})
 	} else {
 		if i, ok := r.metricInfo.Get(request.Namespace + "/" + request.Name); ok {
-			if ep, ok := i.(*model.Endpoints); ok {
+			if ep, ok := i.(*slime_model.Endpoints); ok {
 				ep.Lock.Lock()
 				for key, value := range args {
 					ep.Info[key] = value
@@ -131,7 +202,10 @@ func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[str
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
-			return reconcile.Result{}, nil
+
+			// TODO 全局共享的smartlimiter 被删除了，由于configmap全局共享，不是由smartimiter管理,需要删除
+			err := refreshConfigMap([]*model.Descriptor{},r,request.NamespacedName)
+			return reconcile.Result{}, err
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
@@ -156,8 +230,9 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLim
 
 	var efs map[string]*networking.EnvoyFilter
 	var descriptor map[string]*microservicev1alpha1.SmartLimitDescriptors
+	var gdesc []*model.Descriptor
 
-	efs, descriptor = r.GenerateEnvoyFilters(spec, material, instance)
+	efs, descriptor,gdesc = r.GenerateEnvoyFilters(spec, material, instance)
 	for k, ef := range efs {
 		var efcr *v1alpha3.EnvoyFilter
 		if k == util.Wellkonw_BaseSet {
@@ -184,6 +259,11 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLim
 		if err != nil {
 			log.Errorf("generated/deleted EnvoyFilter %s failed:%+v", efcr.Name, err)
 		}
+	}
+
+	err := refreshConfigMap(gdesc,r,loc)
+	if err != nil {
+		log.Errorf("reflush ConfigMap err: %+v",err.Error())
 	}
 
 	instance.Status = microservicev1alpha1.SmartLimiterStatus{

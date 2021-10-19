@@ -13,14 +13,15 @@ import (
 	envoy_extensions_filters_http_local_ratelimit_v3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/local_ratelimit/v3"
 	envoy_match_v3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	envoy_type_v3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	structpb "github.com/gogo/protobuf/types"
 	"github.com/golang/protobuf/ptypes/duration"
 	"github.com/golang/protobuf/ptypes/wrappers"
+	"hash/adler32"
+	networking "istio.io/api/networking/v1alpha3"
+	"k8s.io/apimachinery/pkg/types"
 	"slime.io/slime/framework/util"
 	microservicev1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
 	"strconv"
-
-	structpb "github.com/gogo/protobuf/types"
-	networking "istio.io/api/networking/v1alpha3"
 )
 
 // GenerateHttpFilterLocalRateLimit enable local rate limit but without parameters
@@ -72,7 +73,7 @@ func generateHttpFilterLocalRateLimit() *networking.EnvoyFilter_EnvoyConfigObjec
 }
 
 // TODO
-func generateEntries(item *microservicev1alpha1.SmartLimitDescriptor) []*envoy_ratelimit_v3.RateLimitDescriptor_Entry {
+func generateEntries(item *microservicev1alpha1.SmartLimitDescriptor,loc types.NamespacedName) []*envoy_ratelimit_v3.RateLimitDescriptor_Entry {
 	entries := make([]*envoy_ratelimit_v3.RateLimitDescriptor_Entry, 0)
 	var entry *envoy_ratelimit_v3.RateLimitDescriptor_Entry
 	if len(item.Match) < 1 {
@@ -82,7 +83,7 @@ func generateEntries(item *microservicev1alpha1.SmartLimitDescriptor) []*envoy_r
 			entry.Value = item.Value
 		} else {
 			entry.Key = "generic_key"
-			entry.Value = generateDescriptorValue()
+			entry.Value = generateDescriptorValue(item,loc)
 		}
 	} else {
 		entry = &envoy_ratelimit_v3.RateLimitDescriptor_Entry{}
@@ -91,7 +92,7 @@ func generateEntries(item *microservicev1alpha1.SmartLimitDescriptor) []*envoy_r
 			entry.Value = item.Value
 		} else {
 			entry.Key = "header_value_match"
-			entry.Value = generateDescriptorValue()
+			entry.Value = generateDescriptorValue(item,loc)
 		}
 	}
 	entries = append(entries, entry)
@@ -122,11 +123,11 @@ func generateDefaultTokenBucket(maxTokens,tokensPerFill,second int) *envoy_type_
 }
 
 
-func generateLocalRateLimitDescriptors(descriptors []*microservicev1alpha1.SmartLimitDescriptor) []*envoy_ratelimit_v3.LocalRateLimitDescriptor {
+func generateLocalRateLimitDescriptors(descriptors []*microservicev1alpha1.SmartLimitDescriptor,loc types.NamespacedName) []*envoy_ratelimit_v3.LocalRateLimitDescriptor {
 
 	localRateLimitDescriptors := make([]*envoy_ratelimit_v3.LocalRateLimitDescriptor, 0)
 	for _, item := range descriptors {
-		entries := generateEntries(item)
+		entries := generateEntries(item,loc)
 		tokenBucket := generateTokenBucket(item)
 		localRateLimitDescriptors = append(localRateLimitDescriptors, &envoy_ratelimit_v3.LocalRateLimitDescriptor{
 			Entries:     entries,
@@ -136,26 +137,31 @@ func generateLocalRateLimitDescriptors(descriptors []*microservicev1alpha1.Smart
 	return localRateLimitDescriptors
 }
 
-
-// todo query from api-server
+// todo query from api-server , how to validate api
 func generateVhostRouteName(descriptor *microservicev1alpha1.SmartLimitDescriptor) string {
-	return fmt.Sprintf("%s|%s|%d",descriptor.Target.Diretcion,"http",descriptor.Target.Port)
+	direction := descriptor.Target.Diretcion
+	//port := descriptor.Target.Port
+	if direction == "" {
+		direction = "inbound"
+	}
+	return fmt.Sprintf("%s|%s|%d",direction,"http",descriptor.Target.Port)
 }
 
-// todo how to generate this value, the value should match the value in ratelimit
-func generateDescriptorValue() string {
-	return ""
+func generateDescriptorValue(item *microservicev1alpha1.SmartLimitDescriptor,loc types.NamespacedName) string {
+
+	id := adler32.Checksum([]byte(item.String()+loc.String()))
+	return fmt.Sprintf("Service[%s.%s]-User[none]-Id[%d]",loc.Name,loc.Namespace,id)
 }
 
 // actions in route.rate_limits, tag
-func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDescriptor) *envoy_config_route_v3.RateLimit_Action {
+func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDescriptor,loc types.NamespacedName) *envoy_config_route_v3.RateLimit_Action {
 
 	var action *envoy_config_route_v3.RateLimit_Action
 
 	if len(descriptor.Match) < 1 {
 		action.ActionSpecifier = &envoy_config_route_v3.RateLimit_Action_GenericKey_{
 			GenericKey: &envoy_config_route_v3.RateLimit_Action_GenericKey{
-				DescriptorValue: generateDescriptorValue(),
+				DescriptorValue: generateDescriptorValue(descriptor,loc),
 			},
 		}
 	} else {
@@ -185,7 +191,7 @@ func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDes
 		}
 		action.ActionSpecifier = &envoy_config_route_v3.RateLimit_Action_HeaderValueMatch_{
 			HeaderValueMatch: &envoy_config_route_v3.RateLimit_Action_HeaderValueMatch{
-				DescriptorValue: generateDescriptorValue(),
+				DescriptorValue: generateDescriptorValue(descriptor,loc),
 				Headers: headers,
 			},
 		}
@@ -193,7 +199,7 @@ func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDes
 	return action
 }
 
-func generateHttpRouterPatch(descriptors []*microservicev1alpha1.SmartLimitDescriptor) ([]*networking.EnvoyFilter_EnvoyConfigObjectPatch,error) {
+func generateHttpRouterPatch(descriptors []*microservicev1alpha1.SmartLimitDescriptor,loc types.NamespacedName) ([]*networking.EnvoyFilter_EnvoyConfigObjectPatch,error) {
 
 	patches := make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch,0)
 	// actions in per router
@@ -201,7 +207,7 @@ func generateHttpRouterPatch(descriptors []*microservicev1alpha1.SmartLimitDescr
 
 	for _,descriptor := range descriptors {
 		vhostRoute := generateVhostRouteName(descriptor)
-		action := generateRouteRateLimitAction(descriptor)
+		action := generateRouteRateLimitAction(descriptor,loc)
 		if _,ok := route2RateLimitsActions[vhostRoute]; !ok {
 			route2RateLimitsActions[vhostRoute] = []*envoy_config_route_v3.RateLimit_Action{action}
 		} else {
@@ -259,7 +265,7 @@ func generateHttpRouterPatch(descriptors []*microservicev1alpha1.SmartLimitDescr
 }
 
 
-func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescriptor) []*networking.EnvoyFilter_EnvoyConfigObjectPatch {
+func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescriptor,loc types.NamespacedName) []*networking.EnvoyFilter_EnvoyConfigObjectPatch {
 
 	patches := make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch,0)
 	// multi routes
@@ -274,10 +280,8 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 		}
 	}
 
-
-
 	for vhostRoute, desc := range route2Descriptors {
-		localRateLimitDescriptors := generateLocalRateLimitDescriptors(desc)
+		localRateLimitDescriptors := generateLocalRateLimitDescriptors(desc,loc)
 		localRateLimit := &envoy_extensions_filters_http_local_ratelimit_v3.LocalRateLimit{
 			TokenBucket: generateDefaultTokenBucket(100000,100000,1),
 			Descriptors: localRateLimitDescriptors,
@@ -337,13 +341,10 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 				},
 			},
 		}
-
-
 		patches = append(patches,patch)
 	}
 	return patches
 }
-
 
 //func descriptorsToEnvoyFilter(descriptor []*microservicev1alpha1.SmartLimitDescriptor, labels map[string]string) *networking.EnvoyFilter {
 //	ef := &networking.EnvoyFilter{

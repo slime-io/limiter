@@ -1,15 +1,17 @@
 package controllers
 
 import (
-	"context"
+
+	"fmt"
 	envoy_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoy_config_ratelimit_v3 "github.com/envoyproxy/go-control-plane/envoy/config/ratelimit/v3"
 	structpb "github.com/gogo/protobuf/types"
 	networking "istio.io/api/networking/v1alpha3"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"slime.io/slime/framework/util"
+	microservicev1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
+	"slime.io/slime/modules/limiter/model"
+	"strconv"
 )
 
 // GenerateHttpFilterEnvoyRateLimitPatch  TODO  hard code
@@ -98,20 +100,58 @@ func generateRateLimitService(clusterName string) *envoy_config_ratelimit_v3.Rat
 }
 
 // TODO get parameters from global config
-func generateNamespaceName() types.NamespacedName {
+func getConfigMapNamespaceName() types.NamespacedName {
 	return types.NamespacedName{
 		Namespace: "istio-system",
 		Name:      "rate-limit-config",
 	}
 }
 
-// UpdateConfigMap  how to find acquire client
-func UpdateConfigMap(client client.Client) {
+// https://github.com/envoyproxy/ratelimit only support per second, minute, hour, and day limits
+func calculateRequestsPerUnit(descriptor *microservicev1alpha1.SmartLimitDescriptor) (int,string ,error) {
 
-	loc := generateNamespaceName()
-	cm := &v1.ConfigMap{}
-	_ = client.Get(context.TODO(), loc, cm)
-	//
+	quota,err := strconv.Atoi(descriptor.Action.Quota)
+	if err != nil {
+		return 0,"",err
+	}
+	seconds := descriptor.Action.FillInterval.Seconds
+	var unit string
+	switch seconds {
+	case 60*60*24 :
+		unit = "day"
+	case 60*60 :
+		unit = "hour"
+	case 60 :
+		unit = "minute"
+	case 1 :
+		unit = "second"
+	default:
+		unit = ""
+	}
+	if unit == "" {
+		return quota,unit,fmt.Errorf("invalid time in global rate limit")
+	}
+	return quota,unit,nil
+}
 
 
+func generateRatelimitConfig(descriptors []*microservicev1alpha1.SmartLimitDescriptor,name types.NamespacedName) ([]*model.Descriptor,error) {
+
+	desc := make([]*model.Descriptor,0)
+	for _, descriptor := range descriptors {
+		quota,unit,err := calculateRequestsPerUnit(descriptor)
+		if err != nil {
+			return desc,err
+		}
+		item := &model.Descriptor{
+			Key:         "generic_key",
+			Value:       "value",
+			RateLimit:   &model.RateLimit{
+				RequestsPerUnit: uint32(quota),
+				Unit:            unit,
+			},
+		}
+		desc = append(desc,item)
+	}
+	return desc,nil
 }
