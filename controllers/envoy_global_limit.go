@@ -1,7 +1,6 @@
 package controllers
 
 import (
-
 	"fmt"
 	envoy_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoy_config_ratelimit_v3 "github.com/envoyproxy/go-control-plane/envoy/config/ratelimit/v3"
@@ -14,13 +13,13 @@ import (
 	"strconv"
 )
 
-// GenerateHttpFilterEnvoyRateLimitPatch  TODO  hard code
-func generateHttpFilterEnvoyRateLimitPatch(clusterName string) *networking.EnvoyFilter_EnvoyConfigObjectPatch{
+// GenerateHttpFilterEnvoyRateLimitPatch
+func generateHttpFilterEnvoyRateLimitPatch(clusterName string) *networking.EnvoyFilter_EnvoyConfigObjectPatch {
 
 	rateLimitServiceConfig := generateRateLimitService(clusterName)
 	t, err := util.MessageToStruct(rateLimitServiceConfig)
 	if err != nil {
-		log.Errorf("MessageToStruct err: %+v",err.Error())
+		log.Errorf("MessageToStruct err: %+v", err.Error())
 		return nil
 	}
 
@@ -45,7 +44,7 @@ func generateHttpFilterEnvoyRateLimitPatch(clusterName string) *networking.Envoy
 			Operation: networking.EnvoyFilter_Patch_INSERT_BEFORE,
 			Value: &structpb.Struct{
 				Fields: map[string]*structpb.Value{
-					util.Struct_HttpFilter_Name: {  // TODO
+					util.Struct_HttpFilter_Name: { // TODO
 						Kind: &structpb.Value_StringValue{StringValue: "envoy.filters.http.ratelimit"},
 					},
 					util.Struct_HttpFilter_TypedConfig: {
@@ -63,9 +62,9 @@ func generateHttpFilterEnvoyRateLimitPatch(clusterName string) *networking.Envoy
 											StructValue: &structpb.Struct{
 												Fields: map[string]*structpb.Value{
 													"domain": {
-														Kind: &structpb.Value_StringValue{StringValue: "qingzhou"},
+														Kind: &structpb.Value_StringValue{StringValue: model.QingZhouDomain },
 													},
-													"rate_limit_service" : {
+													"rate_limit_service": {
 														Kind: &structpb.Value_StructValue{StructValue: t},
 													},
 												},
@@ -83,17 +82,14 @@ func generateHttpFilterEnvoyRateLimitPatch(clusterName string) *networking.Envoy
 	return patch
 }
 
-func generateRateLimitService(clusterName string) *envoy_config_ratelimit_v3.RateLimitServiceConfig{
-
-	envoyGrpc := &envoy_core_v3.GrpcService_EnvoyGrpc{
-		ClusterName: clusterName,
-	}
-	service := &envoy_core_v3.GrpcService{
-		TargetSpecifier: &envoy_core_v3.GrpcService_EnvoyGrpc_{EnvoyGrpc: envoyGrpc},
-	}
+func generateRateLimitService(clusterName string) *envoy_config_ratelimit_v3.RateLimitServiceConfig {
 
 	rateLimitServiceConfig := &envoy_config_ratelimit_v3.RateLimitServiceConfig{
-		GrpcService:   service,
+		GrpcService: &envoy_core_v3.GrpcService{
+			TargetSpecifier: &envoy_core_v3.GrpcService_EnvoyGrpc_{EnvoyGrpc: &envoy_core_v3.GrpcService_EnvoyGrpc{
+				ClusterName: clusterName,
+			}},
+		},
 		TransportApiVersion: envoy_core_v3.ApiVersion_V3,
 	}
 	return rateLimitServiceConfig
@@ -102,56 +98,61 @@ func generateRateLimitService(clusterName string) *envoy_config_ratelimit_v3.Rat
 // TODO get parameters from global config
 func getConfigMapNamespaceName() types.NamespacedName {
 	return types.NamespacedName{
-		Namespace: "istio-system",
-		Name:      "rate-limit-config",
+		Namespace: model.ConfigMapNamespace,
+		Name:      model.ConfigMapName,
 	}
 }
 
 // https://github.com/envoyproxy/ratelimit only support per second, minute, hour, and day limits
-func calculateRequestsPerUnit(descriptor *microservicev1alpha1.SmartLimitDescriptor) (int,string ,error) {
+func calculateRequestsPerUnit(descriptor *microservicev1alpha1.SmartLimitDescriptor) (quota int, unit string, err error) {
 
-	quota,err := strconv.Atoi(descriptor.Action.Quota)
+	quota, err = strconv.Atoi(descriptor.Action.Quota)
 	if err != nil {
-		return 0,"",err
+		return quota, unit, err
 	}
 	seconds := descriptor.Action.FillInterval.Seconds
-	var unit string
 	switch seconds {
-	case 60*60*24 :
+	case 60 * 60 * 24:
 		unit = "day"
-	case 60*60 :
+	case 60 * 60:
 		unit = "hour"
-	case 60 :
+	case 60:
 		unit = "minute"
-	case 1 :
+	case 1:
 		unit = "second"
 	default:
-		unit = ""
-	}
-	if unit == "" {
-		return quota,unit,fmt.Errorf("invalid time in global rate limit")
+		return quota, unit, fmt.Errorf("invalid time in global rate limit")
 	}
 	return quota,unit,nil
 }
 
+func generateRatelimitConfig(descriptors []*microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) []*model.Descriptor {
 
-func generateRatelimitConfig(descriptors []*microservicev1alpha1.SmartLimitDescriptor,name types.NamespacedName) ([]*model.Descriptor,error) {
-
-	desc := make([]*model.Descriptor,0)
+	desc := make([]*model.Descriptor, 0)
 	for _, descriptor := range descriptors {
-		quota,unit,err := calculateRequestsPerUnit(descriptor)
+		quota, unit, err := calculateRequestsPerUnit(descriptor)
 		if err != nil {
-			return desc,err
+			log.Errorf("calculateRequestsPerUnit err: %+v",err)
+			return desc
 		}
 		item := &model.Descriptor{
-			Key:         "generic_key",
-			Value:       "value",
-			RateLimit:   &model.RateLimit{
+			Value: generateDescriptorValue(descriptor,loc),
+			RateLimit: &model.RateLimit{
 				RequestsPerUnit: uint32(quota),
 				Unit:            unit,
 			},
 		}
-		desc = append(desc,item)
+		if len(descriptor.Match) < 1 {
+			item.Key = model.GenericKey
+		} else {
+			item.Key = model.HeaderValueMatch
+		}
+		desc = append(desc, item)
 	}
-	return desc,nil
+	return desc
+}
+
+// TODO
+func getRateLimiterServerCluster() string {
+	return "cluster"
 }

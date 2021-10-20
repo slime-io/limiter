@@ -34,6 +34,7 @@ import (
 	"slime.io/slime/framework/model/source/k8s"
 	microserviceslimeiov1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
 	"slime.io/slime/modules/limiter/controllers/multicluster"
+	"slime.io/slime/modules/limiter/model"
 	"sync"
 )
 
@@ -81,7 +82,9 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.lastUpdatePolicyLock.Lock()
 		r.lastUpdatePolicy = microserviceslimeiov1alpha1.SmartLimiterSpec{}
 		r.lastUpdatePolicyLock.Unlock()
-		return reconcile.Result{}, nil
+
+		err := refreshConfigMap([]*model.Descriptor{}, r, req.NamespacedName, 1)
+		return reconcile.Result{}, err
 	}
 
 	// 资源更新
