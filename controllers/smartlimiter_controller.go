@@ -83,7 +83,7 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.lastUpdatePolicy = microserviceslimeiov1alpha1.SmartLimiterSpec{}
 		r.lastUpdatePolicyLock.Unlock()
 
-		err := refreshConfigMap([]*model.Descriptor{}, r, req.NamespacedName, 1)
+		err := refreshConfigMap([]*model.Descriptor{}, r, req.NamespacedName, 0)
 		return reconcile.Result{}, err
 	}
 

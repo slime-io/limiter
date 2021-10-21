@@ -57,7 +57,7 @@ func generateHttpFilterLocalRateLimit() *networking.EnvoyFilter_EnvoyConfigObjec
 							StructValue: &structpb.Struct{
 								Fields: map[string]*structpb.Value{
 									util.Struct_Any_AtType: {
-										Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
+										Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit },
 									},
 									"stat-prefix": {
 										Kind: &structpb.Value_StringValue{StringValue: "http_local_rate_limiter"},
@@ -156,7 +156,7 @@ func generateDescriptorValue(item *microservicev1alpha1.SmartLimitDescriptor, lo
 // actions in route.rate_limits, tag
 func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) *envoy_config_route_v3.RateLimit_Action {
 
-	var action *envoy_config_route_v3.RateLimit_Action
+	action := &envoy_config_route_v3.RateLimit_Action{}
 
 	if len(descriptor.Match) < 1 {
 		action.ActionSpecifier = &envoy_config_route_v3.RateLimit_Action_GenericKey_{
@@ -216,11 +216,20 @@ func generateHttpRouterPatch(descriptors []*microservicev1alpha1.SmartLimitDescr
 		}
 	}
 
+
+
+
 	rateLimit := &envoy_config_route_v3.RateLimit{}
 	for item, action := range route2RateLimitsActions {
 		rateLimit.Actions = action
-		rateLimit.Stage = &wrappers.UInt32Value{Value: uint32(0)}
-		rateLimitStruct, err := util.MessageToStruct(rateLimit)
+		route := &envoy_config_route_v3.Route{
+			Action:    &envoy_config_route_v3.Route_Route{
+				Route: &envoy_config_route_v3.RouteAction{
+					RateLimits: []*envoy_config_route_v3.RateLimit{rateLimit},
+				},
+			},
+		}
+		routeStruct, err := util.MessageToStruct(route)
 		if err != nil {
 			return nil, err
 		}
@@ -240,23 +249,7 @@ func generateHttpRouterPatch(descriptors []*microservicev1alpha1.SmartLimitDescr
 			},
 			Patch: &networking.EnvoyFilter_Patch{
 				Operation: networking.EnvoyFilter_Patch_MERGE,
-				Value: &structpb.Struct{
-					Fields: map[string]*structpb.Value{
-						"route": {
-							Kind: &structpb.Value_StructValue{
-								StructValue: &structpb.Struct{
-									Fields: map[string]*structpb.Value{
-										"rate_limits": {
-											Kind: &structpb.Value_StructValue{
-												StructValue: rateLimitStruct,
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
+				Value: routeStruct,
 			},
 		}
 		patches = append(patches, patch)
@@ -305,6 +298,10 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 			return nil
 		}
 
+		local.Fields[`@type`] = &structpb.Value{
+			Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
+		}
+
 		patch := &networking.EnvoyFilter_EnvoyConfigObjectPatch{
 			ApplyTo: networking.EnvoyFilter_HTTP_ROUTE,
 			Match: &networking.EnvoyFilter_EnvoyConfigObjectMatch{
@@ -328,9 +325,7 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 								StructValue: &structpb.Struct{
 									Fields: map[string]*structpb.Value{
 										util.Envoy_LocalRateLimit: {
-											Kind: &structpb.Value_StructValue{
-												StructValue: local,
-											},
+											Kind: &structpb.Value_StructValue{StructValue: local},
 										},
 									},
 								},
@@ -340,6 +335,7 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 				},
 			},
 		}
+
 		patches = append(patches, patch)
 	}
 	return patches

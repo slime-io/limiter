@@ -124,6 +124,8 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDesc
 	// enable and config plugin envoy.filters.http.local_ratelimit
 	if len(localDescriptors) > 0 {
 		httpFilterLocalRateLimitPatch := generateHttpFilterLocalRateLimit()
+
+		log.Infof("get http filter local ratelimiter patch %s",httpFilterLocalRateLimitPatch)
 		ef.ConfigPatches = append(ef.ConfigPatches, httpFilterLocalRateLimitPatch)
 
 		perFilterPatch := generatePerFilterConfig(localDescriptors, loc)
