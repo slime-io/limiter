@@ -48,13 +48,13 @@ func (r *SmartLimiterReconciler) GenerateEnvoyFilters(spec microservicev1alpha1.
 					if des.Action != nil {
 						if rateLimitValue, err := util.CalculateTemplate(des.Action.Quota, materialInterface); err == nil {
 							validDescriptor.Descriptor_ = append(validDescriptor.Descriptor_, &microservicev1alpha1.SmartLimitDescriptor{
-								Action:  &microservicev1alpha1.SmartLimitDescriptor_Action{
+								Action: &microservicev1alpha1.SmartLimitDescriptor_Action{
 									Quota:        fmt.Sprintf("%d", rateLimitValue),
 									FillInterval: des.Action.FillInterval,
 									Stragety:     des.Action.Stragety,
 								},
-								Match : des.Match,
-								Target : des.Target,
+								Match:  des.Match,
+								Target: des.Target,
 							})
 						}
 					}
@@ -124,8 +124,6 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDesc
 	// enable and config plugin envoy.filters.http.local_ratelimit
 	if len(localDescriptors) > 0 {
 		httpFilterLocalRateLimitPatch := generateHttpFilterLocalRateLimit()
-
-		log.Infof("get http filter local ratelimiter patch %s",httpFilterLocalRateLimitPatch)
 		ef.ConfigPatches = append(ef.ConfigPatches, httpFilterLocalRateLimitPatch)
 
 		perFilterPatch := generatePerFilterConfig(localDescriptors, loc)

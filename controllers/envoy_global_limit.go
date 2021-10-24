@@ -62,7 +62,7 @@ func generateHttpFilterEnvoyRateLimitPatch(clusterName string) *networking.Envoy
 											StructValue: &structpb.Struct{
 												Fields: map[string]*structpb.Value{
 													"domain": {
-														Kind: &structpb.Value_StringValue{StringValue: model.QingZhouDomain },
+														Kind: &structpb.Value_StringValue{StringValue: model.QingZhouDomain},
 													},
 													"rate_limit_service": {
 														Kind: &structpb.Value_StructValue{StructValue: t},
@@ -113,17 +113,17 @@ func calculateRequestsPerUnit(descriptor *microservicev1alpha1.SmartLimitDescrip
 	seconds := descriptor.Action.FillInterval.Seconds
 	switch seconds {
 	case 60 * 60 * 24:
-		unit = "day"
+		unit = "DAY"
 	case 60 * 60:
-		unit = "hour"
+		unit = "HOUR"
 	case 60:
-		unit = "minute"
+		unit = "MINUTE"
 	case 1:
-		unit = "second"
+		unit = "SECOND"
 	default:
 		return quota, unit, fmt.Errorf("invalid time in global rate limit")
 	}
-	return quota,unit,nil
+	return quota, unit, nil
 }
 
 func generateRatelimitConfig(descriptors []*microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) []*model.Descriptor {
@@ -132,11 +132,11 @@ func generateRatelimitConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 	for _, descriptor := range descriptors {
 		quota, unit, err := calculateRequestsPerUnit(descriptor)
 		if err != nil {
-			log.Errorf("calculateRequestsPerUnit err: %+v",err)
+			log.Errorf("calculateRequestsPerUnit err: %+v", err)
 			return desc
 		}
 		item := &model.Descriptor{
-			Value: generateDescriptorValue(descriptor,loc),
+			Value: generateDescriptorValue(descriptor, loc),
 			RateLimit: &model.RateLimit{
 				RequestsPerUnit: uint32(quota),
 				Unit:            unit,
@@ -154,5 +154,5 @@ func generateRatelimitConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 
 // TODO
 func getRateLimiterServerCluster() string {
-	return "cluster"
+	return "outbound|18081||rate-limit.istio-system.svc.cluster.local"
 }

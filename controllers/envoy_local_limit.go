@@ -57,9 +57,9 @@ func generateHttpFilterLocalRateLimit() *networking.EnvoyFilter_EnvoyConfigObjec
 							StructValue: &structpb.Struct{
 								Fields: map[string]*structpb.Value{
 									util.Struct_Any_AtType: {
-										Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit },
+										Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
 									},
-									"stat-prefix": {
+									"stat_prefix": {
 										Kind: &structpb.Value_StringValue{StringValue: "http_local_rate_limiter"},
 									},
 								},
@@ -188,7 +188,7 @@ func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDes
 					PresentMatch: present,
 				}
 			}
-			headers = append(headers,header)
+			headers = append(headers, header)
 		}
 		action.ActionSpecifier = &envoy_config_route_v3.RateLimit_Action_HeaderValueMatch_{
 			HeaderValueMatch: &envoy_config_route_v3.RateLimit_Action_HeaderValueMatch{
@@ -216,14 +216,11 @@ func generateHttpRouterPatch(descriptors []*microservicev1alpha1.SmartLimitDescr
 		}
 	}
 
-
-
-
 	rateLimit := &envoy_config_route_v3.RateLimit{}
 	for item, action := range route2RateLimitsActions {
 		rateLimit.Actions = action
 		route := &envoy_config_route_v3.Route{
-			Action:    &envoy_config_route_v3.Route_Route{
+			Action: &envoy_config_route_v3.Route_Route{
 				Route: &envoy_config_route_v3.RouteAction{
 					RateLimits: []*envoy_config_route_v3.RateLimit{rateLimit},
 				},
@@ -249,13 +246,97 @@ func generateHttpRouterPatch(descriptors []*microservicev1alpha1.SmartLimitDescr
 			},
 			Patch: &networking.EnvoyFilter_Patch{
 				Operation: networking.EnvoyFilter_Patch_MERGE,
-				Value: routeStruct,
+				Value:     routeStruct,
 			},
 		}
 		patches = append(patches, patch)
 	}
 	return patches, nil
 }
+
+//func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) []*networking.EnvoyFilter_EnvoyConfigObjectPatch {
+//
+//	patches := make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, 0)
+//	// multi routes
+//	route2Descriptors := make(map[string][]*microservicev1alpha1.SmartLimitDescriptor)
+//
+//	for _, descriptor := range descriptors {
+//		vhostName := generateVhostName(descriptor)
+//		if _, ok := route2Descriptors[vhostName]; !ok {
+//			route2Descriptors[vhostName] = []*microservicev1alpha1.SmartLimitDescriptor{descriptor}
+//		} else {
+//			route2Descriptors[vhostName] = append(route2Descriptors[vhostName], descriptor)
+//		}
+//	}
+//
+//	for vhostRoute, desc := range route2Descriptors {
+//		localRateLimitDescriptors := generateLocalRateLimitDescriptors(desc, loc)
+//		localRateLimit := &envoy_extensions_filters_http_local_ratelimit_v3.LocalRateLimit{
+//			TokenBucket: generateDefaultTokenBucket(100000, 100000, 1),
+//			Descriptors: localRateLimitDescriptors,
+//			StatPrefix:  util.Struct_EnvoyLocalRateLimit_Limiter,
+//			FilterEnabled: &envoy_core_v3.RuntimeFractionalPercent{
+//				RuntimeKey: util.Struct_EnvoyLocalRateLimit_Enabled,
+//				DefaultValue: &envoy_type_v3.FractionalPercent{
+//					Numerator:   100,
+//					Denominator: envoy_type_v3.FractionalPercent_HUNDRED,
+//				},
+//			},
+//			FilterEnforced: &envoy_core_v3.RuntimeFractionalPercent{
+//				RuntimeKey: util.Struct_EnvoyLocalRateLimit_Enforced,
+//				DefaultValue: &envoy_type_v3.FractionalPercent{
+//					Numerator:   100,
+//					Denominator: envoy_type_v3.FractionalPercent_HUNDRED,
+//				},
+//			},
+//		}
+//
+//
+//		local, err := util.MessageToStruct(localRateLimit)
+//		if err != nil {
+//			return nil
+//		}
+//		local.Fields[`@type`] = &structpb.Value{
+//			Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
+//		}
+//		patch := &networking.EnvoyFilter_EnvoyConfigObjectPatch{
+//			ApplyTo: networking.EnvoyFilter_HTTP_ROUTE,
+//			Match: &networking.EnvoyFilter_EnvoyConfigObjectMatch{
+//				ObjectTypes: &networking.EnvoyFilter_EnvoyConfigObjectMatch_RouteConfiguration{
+//					RouteConfiguration: &networking.EnvoyFilter_RouteConfigurationMatch{
+//						Vhost: &networking.EnvoyFilter_RouteConfigurationMatch_VirtualHostMatch{
+//							Name: vhostRoute,
+//							Route: &networking.EnvoyFilter_RouteConfigurationMatch_RouteMatch{
+//								Name: "default", // todo
+//							},
+//						},
+//					},
+//				},
+//			},
+//			Patch: &networking.EnvoyFilter_Patch{
+//				Operation: networking.EnvoyFilter_Patch_MERGE,
+//				Value: &structpb.Struct{
+//					Fields: map[string]*structpb.Value{
+//						"typed_per_filter_config": {
+//							Kind: &structpb.Value_StructValue{
+//								StructValue: &structpb.Struct{
+//									Fields: map[string]*structpb.Value{
+//										util.Envoy_LocalRateLimit: {
+//											Kind: &structpb.Value_StructValue{StructValue: local},
+//										},
+//									},
+//								},
+//							},
+//						},
+//					},
+//				},
+//			},
+//		}
+//		log.Infof("%s",patch.String())
+//		patches = append(patches, patch)
+//	}
+//	return patches
+//}
 
 func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) []*networking.EnvoyFilter_EnvoyConfigObjectPatch {
 
@@ -297,11 +378,9 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 		if err != nil {
 			return nil
 		}
-
-		local.Fields[`@type`] = &structpb.Value{
-			Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
-		}
-
+		//local.Fields[`@type`] = &structpb.Value{
+		//	Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
+		//}
 		patch := &networking.EnvoyFilter_EnvoyConfigObjectPatch{
 			ApplyTo: networking.EnvoyFilter_HTTP_ROUTE,
 			Match: &networking.EnvoyFilter_EnvoyConfigObjectMatch{
@@ -325,7 +404,21 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 								StructValue: &structpb.Struct{
 									Fields: map[string]*structpb.Value{
 										util.Envoy_LocalRateLimit: {
-											Kind: &structpb.Value_StructValue{StructValue: local},
+											Kind: &structpb.Value_StructValue{
+												StructValue: &structpb.Struct{
+													Fields: map[string]*structpb.Value{
+														util.Struct_Any_AtType: {
+															Kind: &structpb.Value_StringValue{StringValue: "type.googleapis.com/udpa.type.v1.TypedStruct"},
+														},
+														"type_url": {
+															Kind: &structpb.Value_StringValue{StringValue: "type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit"},
+														},
+														"value" : {
+															Kind: &structpb.Value_StructValue{StructValue: local},
+														},
+													},
+												},
+											},
 										},
 									},
 								},
@@ -335,94 +428,8 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 				},
 			},
 		}
-
+		log.Infof("%s", patch.String())
 		patches = append(patches, patch)
 	}
 	return patches
 }
-
-//func descriptorsToEnvoyFilter(descriptor []*microservicev1alpha1.SmartLimitDescriptor, labels map[string]string) *networking.EnvoyFilter {
-//	ef := &networking.EnvoyFilter{
-//		WorkloadSelector: &networking.WorkloadSelector{
-//			Labels: labels,
-//		},
-//	}
-//	ef.ConfigPatches = make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, 0)
-//	// envoy local ratelimit 不支持header match，因此仅应存在一条
-//	des := descriptor[0]
-//	i, _ := strconv.Atoi(des.Action.Quota)
-//	envoyLocDes := &envoy_extensions_filters_http_local_ratelimit_v3.LocalRateLimit{
-//		StatPrefix: util.Struct_EnvoyLocalRateLimit_Limiter,
-//		TokenBucket: &envoy_type_v3.TokenBucket{
-//			MaxTokens: uint32(i),
-//			FillInterval: &duration.Duration{
-//				Seconds: des.Action.FillInterval.Seconds,
-//				Nanos:   des.Action.FillInterval.Nanos,
-//			},
-//		},
-//		FilterEnabled: &envoy_config_core_v3.RuntimeFractionalPercent{
-//			RuntimeKey: util.Struct_EnvoyLocalRateLimit_Enabled,
-//			DefaultValue: &envoy_type_v3.FractionalPercent{
-//				Numerator:   100,
-//				Denominator: envoy_type_v3.FractionalPercent_HUNDRED,
-//			},
-//		},
-//		FilterEnforced: &envoy_config_core_v3.RuntimeFractionalPercent{
-//			RuntimeKey: util.Struct_EnvoyLocalRateLimit_Enforced,
-//			DefaultValue: &envoy_type_v3.FractionalPercent{
-//				Numerator:   100,
-//				Denominator: envoy_type_v3.FractionalPercent_HUNDRED,
-//			},
-//		},
-//	}
-//	t, err := util.MessageToStruct(envoyLocDes)
-//	if err == nil {
-//		patch := &networking.EnvoyFilter_EnvoyConfigObjectPatch{
-//			ApplyTo: networking.EnvoyFilter_HTTP_FILTER,
-//			Match: &networking.EnvoyFilter_EnvoyConfigObjectMatch{
-//				Context: networking.EnvoyFilter_SIDECAR_INBOUND,
-//				ObjectTypes: &networking.EnvoyFilter_EnvoyConfigObjectMatch_Listener{
-//					Listener: &networking.EnvoyFilter_ListenerMatch{
-//						FilterChain: &networking.EnvoyFilter_ListenerMatch_FilterChainMatch{
-//							Filter: &networking.EnvoyFilter_ListenerMatch_FilterMatch{
-//								Name: util.Envoy_HttpConnectionManager,
-//								SubFilter: &networking.EnvoyFilter_ListenerMatch_SubFilterMatch{
-//									Name: util.Envoy_Route,
-//								},
-//							},
-//						},
-//					},
-//				},
-//			},
-//			Patch: &networking.EnvoyFilter_Patch{
-//				Operation: networking.EnvoyFilter_Patch_INSERT_BEFORE,
-//				Value: &structpb.Struct{
-//					Fields: map[string]*structpb.Value{
-//						util.Struct_HttpFilter_Name: {
-//							Kind: &structpb.Value_StringValue{StringValue: util.Envoy_LocalRateLimit},
-//						},
-//						util.Struct_HttpFilter_TypedConfig: {
-//							Kind: &structpb.Value_StructValue{
-//								StructValue: &structpb.Struct{
-//									Fields: map[string]*structpb.Value{
-//										util.Struct_Any_AtType: {
-//											Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_UdpaTypedStruct},
-//										},
-//										util.Struct_Any_TypedUrl: {
-//											Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
-//										},
-//										util.Struct_Any_Value: {
-//											Kind: &structpb.Value_StructValue{StructValue: t},
-//										},
-//									},
-//								},
-//							},
-//						},
-//					},
-//				},
-//			},
-//		}
-//		ef.ConfigPatches = append(ef.ConfigPatches, patch)
-//	}
-//	return ef
-//}

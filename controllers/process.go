@@ -129,7 +129,7 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLim
 			if mi, err := util.ProtoToMap(ef); err == nil {
 				efcr.Spec = mi
 			} else {
-				log.Errorf("proto map err :%+v",err)
+				log.Errorf("proto map err :%+v", err)
 			}
 		}
 		_, err := refreshEnvoyFilter(instance, r, efcr)
@@ -181,7 +181,6 @@ func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLim
 
 	// Delete
 	if obj.Spec == nil {
-		log.Infof("delete")
 		if err != nil && !errors.IsNotFound(err) {
 			return reconcile.Result{}, err
 		} else if err == nil {
@@ -209,7 +208,6 @@ func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLim
 
 	// TODO: 判断是否需要更新
 	// Update
-	log.Infof("found")
 	if !reflect.DeepEqual(found.Spec, obj.Spec) {
 		log.Infof("Update a new EnvoyFilter,%s:%s", namespace, name)
 		obj.ResourceVersion = found.ResourceVersion
