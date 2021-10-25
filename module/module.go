@@ -2,6 +2,7 @@ package module
 
 import (
 	"os"
+
 	"slime.io/slime/framework/model/module"
 	"slime.io/slime/modules/limiter/model"
 
@@ -59,6 +60,7 @@ func (m *Module) InitManager(mgr manager.Manager, env bootstrap.Environment, cbs
 
 	// add dr reconcile
 	if err := (&istiocontroller.DestinationRuleReconciler{
+		Env:    &env,
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {

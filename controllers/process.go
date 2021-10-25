@@ -40,50 +40,51 @@ func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLim
 	if err := controllerutil.SetControllerReference(instance, obj, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
+	istioRev := model.IstioRevFromLabel(instance.Labels)
+	model.PatchIstioRevLabel(&obj.Labels, istioRev)
+
 	found := &v1alpha3.EnvoyFilter{}
+	nsName := types.NamespacedName{Name: name, Namespace: namespace}
+	err := r.Client.Get(context.TODO(), nsName, found)
 
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, found)
-
-	// Delete
-	if obj.Spec == nil {
-		if err != nil && !errors.IsNotFound(err) {
-			return reconcile.Result{}, err
-		} else if err == nil {
-			err = r.Client.Delete(context.TODO(), obj)
-			return reconcile.Result{}, err
+	if err != nil {
+		if errors.IsNotFound(err) {
+			found = nil
+			err = nil
 		} else {
-			// nothing to do
-			return reconcile.Result{}, nil
+			return reconcile.Result{}, err
 		}
 	}
 
-	// Create
-	if err != nil && errors.IsNotFound(err) {
-		log.Infof("Creating a new EnvoyFilter,%s:%s", namespace, name)
-		err = r.Client.Create(context.TODO(), obj)
-		if err != nil {
+	if found == nil {
+		if obj.Spec != nil {
+			// create
+			log.Infof("Creating a new EnvoyFilter %v", nsName)
+			err = r.Client.Create(context.TODO(), obj)
 			return reconcile.Result{}, err
 		}
-
-		// Pod created successfully - don't requeue
+	} else if model.IstioRevFromLabel(found.Labels) != istioRev {
+		log.Errorf("existing envoyfilter %v istioRev %s but our %s, skip ...",
+			nsName, model.IstioRevFromLabel(found.Labels), istioRev)
 		return reconcile.Result{}, nil
-	} else if err != nil {
+	} else if obj.Spec == nil { // del
+		err = r.Client.Delete(context.TODO(), obj)
+		if errors.IsNotFound(err) {
+			err = nil
+		}
 		return reconcile.Result{}, err
-	}
+	} else { // update
+		if !reflect.DeepEqual(found.Spec, obj.Spec) {
+			log.Infof("Update a new EnvoyFilter,%s:%s", namespace, name)
+			obj.ResourceVersion = found.ResourceVersion
+			err = r.Client.Update(context.TODO(), obj)
 
-	// TODO: 判断是否需要更新
-	// Update
-	if !reflect.DeepEqual(found.Spec, obj.Spec) {
-		log.Infof("Update a new EnvoyFilter,%s:%s", namespace, name)
-		obj.ResourceVersion = found.ResourceVersion
-		err = r.Client.Update(context.TODO(), obj)
-		if err != nil {
+			// Pod created successfully - don't requeue
 			return reconcile.Result{}, err
 		}
-
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
+		// no change no update
 	}
+
 	return reconcile.Result{}, nil
 }
 
@@ -132,10 +133,18 @@ func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[str
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
 			return reconcile.Result{}, nil
+		} else {
+			// Error reading the object - requeue the request.
+			return reconcile.Result{}, err
 		}
-		// Error reading the object - requeue the request.
-		return reconcile.Result{}, err
 	}
+
+	if r.env.RevInScope(model.IstioRevFromLabel(instance.Labels)) {
+		log.Debugf("existing smartlimter %v istiorev %s but our %s, skip ...",
+			request.NamespacedName, model.IstioRevFromLabel(instance.Labels), r.env.IstioRev())
+		return reconcile.Result{}, nil
+	}
+
 	if result, err := r.refresh(instance); err == nil {
 		return result, nil
 	} else {
@@ -185,6 +194,7 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLim
 				efcr.Spec = mi
 			}
 		}
+
 		_, err := refreshEnvoyFilter(instance, r, efcr)
 		if err != nil {
 			log.Errorf("generated/deleted EnvoyFilter %s failed:%+v", efcr.Name, err)
@@ -208,10 +218,16 @@ func (r *SmartLimiterReconciler) subscribe(host string, subset interface{}) {
 		err := r.Client.Get(context.TODO(), loc, instance)
 		if err != nil {
 			if !errors.IsNotFound(err) {
-				log.Errorf("failed to get smartlimiter, host:%s, %+v", host, err)
+				log.Errorf("failed to get smartlimiter, host:%s, %v", host, err)
 			}
+		} else if !r.env.RevInScope(model.IstioRevFromLabel(instance.Labels)) {
+			log.Debugf("existing smartlimter %v istiorev %s but our %s, skip...",
+				loc, model.IstioRevFromLabel(instance.Labels), r.env.IstioRev())
 		} else {
-			_, _ = r.refresh(instance)
+			_, err = r.refresh(instance)
+			if err != nil {
+				log.Errorf("failed to refresh instance %v, err %v", loc, err)
+			}
 		}
 	}
 }
