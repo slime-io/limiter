@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"slime.io/slime/framework/apis/config/v1alpha1"
+	"slime.io/slime/framework/model"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
@@ -67,18 +68,20 @@ type SmartLimiterReconciler struct {
 func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	_ = context.Background()
 
-	// your logic here
-
 	instance := &microserviceslimeiov1alpha1.SmartLimiter{}
 	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
 
-	// 异常分支
-	if err != nil && !errors.IsNotFound(err) {
-		return reconcile.Result{}, err
+	if err != nil {
+		if errors.IsNotFound(err) {
+			instance = nil
+			err = nil
+		} else {
+			return reconcile.Result{}, err
+		}
 	}
 
-	// 资源删除
-	if err != nil && errors.IsNotFound(err) {
+	if instance == nil {
+		// 资源删除
 		log.Infof("metricInfo.Pop, name %s, namespace,%s", req.Name, req.Namespace)
 		r.metricInfo.Pop(req.Namespace + "/" + req.Name)
 		r.source.WatchRemove(req.NamespacedName)
@@ -86,7 +89,12 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.lastUpdatePolicy = microserviceslimeiov1alpha1.SmartLimiterSpec{}
 		r.lastUpdatePolicyLock.Unlock()
 		return reconcile.Result{}, nil
+	} else if !r.env.RevInScope(model.IstioRevFromLabel(instance.Labels)) {
+		log.Debugf("existing smartlimiter %v istiorev %s but our %s, skip ...",
+			req.NamespacedName, model.IstioRevFromLabel(instance.Labels), r.env.IstioRev())
+		return ctrl.Result{}, nil
 	}
+
 
 	// 资源更新
 	r.lastUpdatePolicyLock.RLock()
