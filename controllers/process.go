@@ -139,7 +139,7 @@ func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[str
 		}
 	}
 
-	if r.env.RevInScope(model.IstioRevFromLabel(instance.Labels)) {
+	if !r.env.RevInScope(model.IstioRevFromLabel(instance.Labels)) {
 		log.Debugf("existing smartlimter %v istiorev %s but our %s, skip ...",
 			request.NamespacedName, model.IstioRevFromLabel(instance.Labels), r.env.IstioRev())
 		return reconcile.Result{}, nil
