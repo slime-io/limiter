@@ -137,10 +137,9 @@ func generateLocalRateLimitDescriptors(descriptors []*microservicev1alpha1.Smart
 	return localRateLimitDescriptors
 }
 
-// todo query from api-server , how to validate api
+// todo query from api-server to get more infos
 func generateVhostName(descriptor *microservicev1alpha1.SmartLimitDescriptor) string {
 	direction := descriptor.Target.Diretcion
-	//port := descriptor.Target.Port
 	if direction == "" {
 		direction = model.Inbound
 	}
@@ -148,20 +147,23 @@ func generateVhostName(descriptor *microservicev1alpha1.SmartLimitDescriptor) st
 }
 
 func generateDescriptorValue(item *microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) string {
-
 	id := adler32.Checksum([]byte(item.String() + loc.String()))
 	return fmt.Sprintf("Service[%s.%s]-User[none]-Id[%d]", loc.Name, loc.Namespace, id)
 }
 
-// actions in route.rate_limits, tag
+// if key/value is not empty, envoyplugin is needed, we will not generate http route patch
 func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) *envoy_config_route_v3.RateLimit_Action {
-
 	action := &envoy_config_route_v3.RateLimit_Action{}
-
+	var value string
+	if descriptor.Key != "" && descriptor.Value != "" {
+		return nil
+	}else {
+		value = generateDescriptorValue(descriptor, loc)
+	}
 	if len(descriptor.Match) < 1 {
 		action.ActionSpecifier = &envoy_config_route_v3.RateLimit_Action_GenericKey_{
 			GenericKey: &envoy_config_route_v3.RateLimit_Action_GenericKey{
-				DescriptorValue: generateDescriptorValue(descriptor, loc),
+				DescriptorValue: value,
 			},
 		}
 	} else {
@@ -188,11 +190,33 @@ func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDes
 					PresentMatch: present,
 				}
 			}
+
+			//switch match.MatchType.(type) {
+			//case *microservicev1alpha1.SmartLimitDescriptor_HeaderMatcher_RegexMatch:
+			//	header.Name = match.Name
+			//	header.InvertMatch = false
+			//	header.HeaderMatchSpecifier = &envoy_config_route_v3.HeaderMatcher_SafeRegexMatch{
+			//		SafeRegexMatch: &envoy_match_v3.RegexMatcher{
+			//			EngineType: &envoy_match_v3.RegexMatcher_GoogleRe2{},
+			//			Regex: match.GetRegexMatch(),
+			//		},
+			//	}
+			//case *microservicev1alpha1.SmartLimitDescriptor_HeaderMatcher_PresentMatch:
+			//		present := false
+			//		if match.GetPresentMatch() == "true" {
+			//			present = true
+			//		}
+			//		header.Name = match.Name
+			//		header.InvertMatch = false
+			//		header.HeaderMatchSpecifier = &envoy_config_route_v3.HeaderMatcher_PresentMatch{
+			//			PresentMatch: present,
+			//		}
+			//}
 			headers = append(headers, header)
 		}
 		action.ActionSpecifier = &envoy_config_route_v3.RateLimit_Action_HeaderValueMatch_{
 			HeaderValueMatch: &envoy_config_route_v3.RateLimit_Action_HeaderValueMatch{
-				DescriptorValue: generateDescriptorValue(descriptor, loc),
+				DescriptorValue: value,
 				Headers:         headers,
 			},
 		}
@@ -203,12 +227,15 @@ func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDes
 func generateHttpRouterPatch(descriptors []*microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) ([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, error) {
 
 	patches := make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, 0)
-	// actions in per router
 	route2RateLimitsActions := make(map[string][]*envoy_config_route_v3.RateLimit_Action)
 
 	for _, descriptor := range descriptors {
 		vhostName := generateVhostName(descriptor)
 		action := generateRouteRateLimitAction(descriptor, loc)
+		// strange logic
+		if action == nil {
+			continue
+		}
 		if _, ok := route2RateLimitsActions[vhostName]; !ok {
 			route2RateLimitsActions[vhostName] = []*envoy_config_route_v3.RateLimit_Action{action}
 		} else {
@@ -254,90 +281,6 @@ func generateHttpRouterPatch(descriptors []*microservicev1alpha1.SmartLimitDescr
 	return patches, nil
 }
 
-//func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) []*networking.EnvoyFilter_EnvoyConfigObjectPatch {
-//
-//	patches := make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, 0)
-//	// multi routes
-//	route2Descriptors := make(map[string][]*microservicev1alpha1.SmartLimitDescriptor)
-//
-//	for _, descriptor := range descriptors {
-//		vhostName := generateVhostName(descriptor)
-//		if _, ok := route2Descriptors[vhostName]; !ok {
-//			route2Descriptors[vhostName] = []*microservicev1alpha1.SmartLimitDescriptor{descriptor}
-//		} else {
-//			route2Descriptors[vhostName] = append(route2Descriptors[vhostName], descriptor)
-//		}
-//	}
-//
-//	for vhostRoute, desc := range route2Descriptors {
-//		localRateLimitDescriptors := generateLocalRateLimitDescriptors(desc, loc)
-//		localRateLimit := &envoy_extensions_filters_http_local_ratelimit_v3.LocalRateLimit{
-//			TokenBucket: generateDefaultTokenBucket(100000, 100000, 1),
-//			Descriptors: localRateLimitDescriptors,
-//			StatPrefix:  util.Struct_EnvoyLocalRateLimit_Limiter,
-//			FilterEnabled: &envoy_core_v3.RuntimeFractionalPercent{
-//				RuntimeKey: util.Struct_EnvoyLocalRateLimit_Enabled,
-//				DefaultValue: &envoy_type_v3.FractionalPercent{
-//					Numerator:   100,
-//					Denominator: envoy_type_v3.FractionalPercent_HUNDRED,
-//				},
-//			},
-//			FilterEnforced: &envoy_core_v3.RuntimeFractionalPercent{
-//				RuntimeKey: util.Struct_EnvoyLocalRateLimit_Enforced,
-//				DefaultValue: &envoy_type_v3.FractionalPercent{
-//					Numerator:   100,
-//					Denominator: envoy_type_v3.FractionalPercent_HUNDRED,
-//				},
-//			},
-//		}
-//
-//
-//		local, err := util.MessageToStruct(localRateLimit)
-//		if err != nil {
-//			return nil
-//		}
-//		local.Fields[`@type`] = &structpb.Value{
-//			Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
-//		}
-//		patch := &networking.EnvoyFilter_EnvoyConfigObjectPatch{
-//			ApplyTo: networking.EnvoyFilter_HTTP_ROUTE,
-//			Match: &networking.EnvoyFilter_EnvoyConfigObjectMatch{
-//				ObjectTypes: &networking.EnvoyFilter_EnvoyConfigObjectMatch_RouteConfiguration{
-//					RouteConfiguration: &networking.EnvoyFilter_RouteConfigurationMatch{
-//						Vhost: &networking.EnvoyFilter_RouteConfigurationMatch_VirtualHostMatch{
-//							Name: vhostRoute,
-//							Route: &networking.EnvoyFilter_RouteConfigurationMatch_RouteMatch{
-//								Name: "default", // todo
-//							},
-//						},
-//					},
-//				},
-//			},
-//			Patch: &networking.EnvoyFilter_Patch{
-//				Operation: networking.EnvoyFilter_Patch_MERGE,
-//				Value: &structpb.Struct{
-//					Fields: map[string]*structpb.Value{
-//						"typed_per_filter_config": {
-//							Kind: &structpb.Value_StructValue{
-//								StructValue: &structpb.Struct{
-//									Fields: map[string]*structpb.Value{
-//										util.Envoy_LocalRateLimit: {
-//											Kind: &structpb.Value_StructValue{StructValue: local},
-//										},
-//									},
-//								},
-//							},
-//						},
-//					},
-//				},
-//			},
-//		}
-//		log.Infof("%s",patch.String())
-//		patches = append(patches, patch)
-//	}
-//	return patches
-//}
-
 func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) []*networking.EnvoyFilter_EnvoyConfigObjectPatch {
 
 	patches := make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, 0)
@@ -378,9 +321,7 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 		if err != nil {
 			return nil
 		}
-		//local.Fields[`@type`] = &structpb.Value{
-		//	Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
-		//}
+
 		patch := &networking.EnvoyFilter_EnvoyConfigObjectPatch{
 			ApplyTo: networking.EnvoyFilter_HTTP_ROUTE,
 			Match: &networking.EnvoyFilter_EnvoyConfigObjectMatch{
@@ -408,10 +349,10 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 												StructValue: &structpb.Struct{
 													Fields: map[string]*structpb.Value{
 														util.Struct_Any_AtType: {
-															Kind: &structpb.Value_StringValue{StringValue: "type.googleapis.com/udpa.type.v1.TypedStruct"},
+															Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_UdpaTypedStruct},
 														},
 														"type_url": {
-															Kind: &structpb.Value_StringValue{StringValue: "type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit"},
+															Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
 														},
 														"value" : {
 															Kind: &structpb.Value_StructValue{StructValue: local},
@@ -428,7 +369,6 @@ func generatePerFilterConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 				},
 			},
 		}
-		log.Infof("%s", patch.String())
 		patches = append(patches, patch)
 	}
 	return patches

@@ -17,4 +17,5 @@ const (
 
 	GlobalSmartLimiter = "global"
 
+	RateLimitService = "outbound|18081||rate-limit.istio-system.svc.cluster.local"
 )

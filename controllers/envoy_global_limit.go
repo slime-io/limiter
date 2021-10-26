@@ -152,7 +152,11 @@ func generateRatelimitConfig(descriptors []*microservicev1alpha1.SmartLimitDescr
 	return desc
 }
 
-// TODO
-func getRateLimiterServerCluster() string {
-	return "outbound|18081||rate-limit.istio-system.svc.cluster.local"
+// TODO add parameters in global config
+func getRateLimiterServerCluster(rlService string) string {
+	if rlService == "" {
+		return model.RateLimitService
+	} else {
+		return rlService
+	}
 }

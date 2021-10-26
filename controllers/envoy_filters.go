@@ -93,14 +93,16 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDesc
 	}
 	ef.ConfigPatches = make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, 0)
 
-	shareDescriptors := make([]*microservicev1alpha1.SmartLimitDescriptor, 0)
+	globalDescriptors := make([]*microservicev1alpha1.SmartLimitDescriptor, 0)
 	localDescriptors := make([]*microservicev1alpha1.SmartLimitDescriptor, 0)
 
 	for _, descriptor := range descriptors {
-		if descriptor.Action.Stragety == "global" {
-			shareDescriptors = append(shareDescriptors, descriptor)
-		} else {
-			localDescriptors = append(localDescriptors, descriptor)
+		if descriptor.Action != nil {
+			if descriptor.Action.Stragety == model.GlobalSmartLimiter {
+				globalDescriptors = append(globalDescriptors, descriptor)
+			} else {
+				localDescriptors = append(localDescriptors, descriptor)
+			}
 		}
 	}
 
@@ -114,8 +116,15 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDesc
 	}
 
 	// config plugin envoy.filters.http.ratelimit
-	if len(shareDescriptors) > 0 {
-		httpFilterEnvoyRateLimitPatch := generateHttpFilterEnvoyRateLimitPatch(getRateLimiterServerCluster())
+	if len(globalDescriptors) > 0 {
+		var rlService string
+		for _, item := range globalDescriptors {
+			if item.Action.RateLimitService != "" {
+				rlService = item.Action.RateLimitService
+				break
+			}
+		}
+		httpFilterEnvoyRateLimitPatch := generateHttpFilterEnvoyRateLimitPatch(getRateLimiterServerCluster(rlService))
 		if httpFilterEnvoyRateLimitPatch != nil {
 			ef.ConfigPatches = append(ef.ConfigPatches, httpFilterEnvoyRateLimitPatch)
 		}

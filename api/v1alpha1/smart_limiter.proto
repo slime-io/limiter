@@ -21,12 +21,13 @@ option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha1";
 //          fill_interval:
 //            seconds: 60
 //          quota: "60/{{._base.pod}}"
+//          strategy: average
+//          //rate_limit_service: "outbound|18081||rate-limit.istio-system.svc.cluster.local"
 //        conditon: "true"
-//        strategy: average
 //        target:
-//          direction: inbound  #default
-//          port: 80
-//          route: default
+//          //direction: inbound  #default
+//          port: 9080
+//          //route: default
 //          #host: "b.powerful.svc.cluster.local"
 
 
@@ -57,15 +58,19 @@ message SmartLimiterStatus {
 message SmartLimitDescriptor {
     message HeaderMatcher {
         string name = 1;
-
         string regex_match = 2;
         string present_match = 3;
+//        oneof match_type {
+//            string regex_match = 2;
+//            string present_match = 3;
+//        }
     }
 
     message Action {
         string quota = 1;  // 配额
         Duration fill_interval = 2; // 时间
         string stragety= 3; // 策略
+        string rate_limit_service=4; // 全局限流
     }
 
     message Target {
