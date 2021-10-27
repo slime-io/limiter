@@ -2,7 +2,9 @@ apiVersion: microservice.slime.io/v1alpha1
 kind: SmartLimiter
 metadata:
   name: productpage
-  namespace: temppp
+  namespace: temp
+  labels:
+    {{istioRevKey}}: {{istioRevValue}}
 spec:
   sets:
     _base:

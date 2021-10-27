@@ -7,8 +7,8 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/golang/protobuf v1.4.3
-	github.com/onsi/ginkgo v1.16.5
-	github.com/onsi/gomega v1.10.1
+	github.com/onsi/ginkgo v1.11.0
+	github.com/onsi/gomega v1.8.1
 	github.com/orcaman/concurrent-map v0.0.0-20210106121528-16402b402231
 	github.com/sirupsen/logrus v1.4.2
 	gopkg.in/yaml.v2 v2.3.0
@@ -24,6 +24,6 @@ replace (
 	k8s.io/api => k8s.io/api v0.17.2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.17.2
 
-	slime.io/slime/framework => github.com/slime-io/slime/framework v0.3.0
+	slime.io/slime/framework => github.com/slime-io/slime/framework v0.3.1
 //slime.io/slime/framework => ../slime/framework
 )

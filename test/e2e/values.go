@@ -2,8 +2,8 @@ package e2e
 
 var (
 	testResourceToDelete []*TestResource
-	nsSlime              = "temppp"
-	nsApps               = "temppp"
+	nsSlime              = "mesh-operator"
+	nsApps               = "temp"
 	test                 = "test/e2e/testdata/install"
 	slimebootName        = "slime-boot"
 	istiodLabelKey       = "istio.io/rev"

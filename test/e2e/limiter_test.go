@@ -14,27 +14,33 @@ import (
 )
 
 var _ = ginkgo.Describe("SmartLimiter e2e test", func() {
+
 	f := framework.NewDefaultFramework("limiter")
 	f.SkipNamespaceCreation = true
 
 	ginkgo.It("slime module limiter works", func() {
 
-		_, err := f.CreateNamespace(nsSlime, nil)
-		framework.ExpectNoError(err)
+		//_, err := f.CreateNamespace(nsSlime, nil)
+		//framework.ExpectNoError(err)
+		//
+		//if framework.TestContext.IstioRevison != "" {
+		//	istiodLabelV = framework.TestContext.IstioRevison
+		//}
+		//_, err = f.CreateNamespace(nsApps, map[string]string{istiodLabelKey: istiodLabelV,"istio-injection":"enabled"})
+		//framework.ExpectNoError(err)
 
-		if framework.TestContext.IstioRevison != "" {
-			istiodLabelV = framework.TestContext.IstioRevison
-		}
 
-		_, err = f.CreateNamespace(nsApps, map[string]string{istiodLabelKey: istiodLabelV})
-		framework.ExpectNoError(err)
-
-		//createSlimeBoot(f)
-		//createSlimeModuleLimiter(f)
-		//createExampleApps(f)
+		defer func() {
+			for i := len(testResourceToDelete) - 1; i >= 0; i-- {
+				cleanupKubectlInputs(testResourceToDelete[i].Namespace, testResourceToDelete[i].Contents)
+				time.Sleep(500 * time.Millisecond)
+			}
+		}()
+		createExampleApps(f)
+		createSlimeBoot(f)
+		createSlimeModuleLimiter(f)
 		createSmartLimiter(f)
 		isLimiterTackEffect(f)
-		deleteTestResource()
 	})
 })
 
@@ -50,9 +56,9 @@ func createSlimeBoot(f *framework.Framework) {
 	deploySlimeBootYaml := readFile(test, "init/deployment_slime-boot.yaml")
 	deploySlimeBootYaml = strings.ReplaceAll(deploySlimeBootYaml, "{{slimebootTag}}", substituteValue("slimeBootTag", slimebootTag))
 	framework.RunKubectlOrDieInput(nsSlime, deploySlimeBootYaml, "create", "-f", "-")
-	defer func() {
-		testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: nsSlime, Contents: deploySlimeBootYaml})
-	}()
+	//defer func() {
+	//	testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: nsSlime, Contents: deploySlimeBootYaml})
+	//}()
 
 	slimebootDeploymentInstalled := false
 
@@ -85,29 +91,29 @@ func createSlimeModuleLimiter(f *framework.Framework) {
 	slimebootLimitYaml := readFile(test, "samples/limiter/slimeboot_limiter.yaml")
 	slimebootLimitYaml = strings.ReplaceAll(slimebootLimitYaml, "{{limitTag}}", substituteValue("limitTag", limitTag))
 	framework.RunKubectlOrDieInput(nsSlime, slimebootLimitYaml, "create", "-f", "-")
-	defer func() {
-		testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: nsSlime, Contents: slimebootLimitYaml})
-	}()
+	//defer func() {
+	//	testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: nsSlime, Contents: slimebootLimitYaml})
+	//}()
 	limitDeploymentInstalled := false
 
 	for i := 0; i < 60; i++ {
 		pods, err := cs.CoreV1().Pods(nsSlime).List(metav1.ListOptions{})
 		framework.ExpectNoError(err)
-		if len(pods.Items) == 0 {
-			time.Sleep(500 * time.Millisecond)
+		if len(pods.Items) <= 1 {
+			time.Sleep(1000 * time.Millisecond)
 			continue
 		}
 		for _, pod := range pods.Items {
 			err = e2epod.WaitTimeoutForPodReadyInNamespace(cs, pod.Name, nsSlime, framework.PodStartTimeout)
 			framework.ExpectNoError(err)
-			if strings.Contains(pod.Name, "limit") {
+			if strings.Contains(pod.Name, "limiter") {
 				limitDeploymentInstalled = true
+				break
 			}
 		}
-		break
 	}
 	if !limitDeploymentInstalled {
-		framework.Failf("deployment lazyload installation failed\n")
+		framework.Failf("deployment limiter installation failed\n")
 	}
 	ginkgo.By("slimemodule limit installs successfully")
 }
@@ -118,9 +124,9 @@ func createExampleApps(f *framework.Framework) {
 
 	exampleAppsYaml := readFile(test, "config/bookinfo.yaml")
 	framework.RunKubectlOrDieInput(nsApps, exampleAppsYaml, "create", "-f", "-")
-	defer func() {
-		testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: nsApps, Contents: exampleAppsYaml})
-	}()
+	//defer func() {
+	//	testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: nsApps, Contents: exampleAppsYaml})
+	//}()
 
 	// check
 	for i := 0; i < 60; i++ {
@@ -147,13 +153,13 @@ func createSmartLimiter(f *framework.Framework) {
 	}()
 
 	smartLimiterGVR := schema.GroupVersionResource{
-		Group : "microservice.slime.io",
-		Version : "v1alpha1",
-		Resource : "SmartLimiter",
+		Group:    "microservice.slime.io",
+		Version:  "v1alpha1",
+		Resource: "smartlimiters",
 	}
 	created := false
 	for i := 0; i < 60; i++ {
-		_, err := f.DynamicClient.Resource(smartLimiterGVR).Namespace(nsApps).Get("reviews", metav1.GetOptions{})
+		_, err := f.DynamicClient.Resource(smartLimiterGVR).Namespace(nsApps).Get("productpage", metav1.GetOptions{})
 		if err != nil {
 			time.Sleep(500 * time.Millisecond)
 			continue
@@ -169,10 +175,10 @@ func createSmartLimiter(f *framework.Framework) {
 	envoyFilterGVR := schema.GroupVersionResource{
 		Group:    "networking.istio.io",
 		Version:  "v1alpha3",
-		Resource: "EnvoyFilter",
+		Resource: "envoyfilters",
 	}
 	for i := 0; i < 30; i++ {
-		_, err := f.DynamicClient.Resource(envoyFilterGVR).Namespace(nsApps).Get("reviews.default.ratelimit", metav1.GetOptions{})
+		_, err := f.DynamicClient.Resource(envoyFilterGVR).Namespace(nsApps).Get("productpage.temp.ratelimit", metav1.GetOptions{})
 		if err != nil {
 			time.Sleep(1000 * time.Millisecond)
 			continue
@@ -190,41 +196,41 @@ func createSmartLimiter(f *framework.Framework) {
 // curl -I http://reviews:9080/
 
 func isLimiterTackEffect(f *framework.Framework) {
-
+	time.Sleep(5*time.Second)
 	pods,err := f.ClientSet.CoreV1().Pods(nsApps).List(metav1.ListOptions{})
 	framework.ExpectNoError(err)
 	for _,pod := range pods.Items {
 		if strings.Contains(pod.Name, "ratings") {
-			for i:=1;i<=5;i++ {
-				output,_,err := f.ExecCommandInContainerWithFullOutput(pod.Name,pod.Namespace,"curl -I http://productpage:9080/productpage")
+			for i:=1;i<=10;i++ {
+				output,_,err := f.ExecCommandInContainerWithFullOutput(pod.Name,"ratings",nsApps,"curl", "-I","http://productpage:9080/productpage")
 				framework.ExpectNoError(err)
-				if i==5 && !strings.Contains(output,"429") {
+				if i<5 {
+					if !strings.Contains(output,"200") {
+						framework.Failf("servers productpage not found\n")
+					}
+				}else if !strings.Contains(output,"429") {
 					framework.Failf("the smartLimiter action 4/min not take effect .\n")
 				}
-				time.Sleep(1*time.Second)
+				time.Sleep(2*time.Second)
 			}
 		}
 	}
 	ginkgo.By("smartLimiter action 4/min take effect")
 }
 
-func deleteTestResource() {
-	for i := len(testResourceToDelete) - 1; i >= 0; i-- {
-		cleanupKubectlInputs(testResourceToDelete[i].Namespace, testResourceToDelete[i].Contents)
-		time.Sleep(500 * time.Millisecond)
+//func deleteTestResource() {
+//	for i := len(testResourceToDelete) - 1; i >= 0; i-- {
+//		cleanupKubectlInputs(testResourceToDelete[i].Namespace, testResourceToDelete[i].Contents)
+//		time.Sleep(500 * time.Millisecond)
+//	}
+//}
+
+func substituteValue(value, defaultValue string) string {
+	if os.Getenv(value) != "" {
+		return os.Getenv(value)
 	}
+	return defaultValue
 }
-
-// Stops everything from filePath from namespace ns and checks if everything matching selectors from the given namespace is correctly stopped.
-// Aware of the kubectl example files map.
-func cleanupKubectlInputs(ns string, fileContents string, selectors ...string) {
-	ginkgo.By("using delete to clean up resources")
-	// support backward compatibility : file paths or raw json - since we are removing file path
-	// dependencies from this test.
-	framework.RunKubectlOrDieInput(ns, fileContents, "delete", "--grace-period=0", "--force", "-f", "-")
-	//assertCleanup(ns, selectors...)
-}
-
 
 func readFile(test, file string) string {
 	from := filepath.Join(test, file)
@@ -235,9 +241,12 @@ func readFile(test, file string) string {
 	return string(data)
 }
 
-func substituteValue(value, defaultValue string) string {
-	if os.Getenv(value) != "" {
-		return os.Getenv(value)
-	}
-	return defaultValue
+// Stops everything from filePath from namespace ns and checks if everything matching selectors from the given namespace is correctly stopped.
+// Aware of the kubectl example files map.
+func cleanupKubectlInputs(ns string, fileContents string, selectors ...string) {
+	ginkgo.By("using delete to clean up resources")
+	// support backward compatibility : file paths or raw json - since we are removing file path
+	// dependencies from this test.
+	framework.RunKubectlOrDieInput(ns, fileContents, "delete", "--grace-period=0", "--force", "-f", "-")
+	//assertCleanup(ns, selectors...)
 }
