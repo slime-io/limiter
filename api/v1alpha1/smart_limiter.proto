@@ -60,21 +60,17 @@ message SmartLimitDescriptor {
         string name = 1;
         string regex_match = 2;
         string present_match = 3;
-//        oneof match_type {
-//            string regex_match = 2;
-//            string present_match = 3;
-//        }
     }
 
     message Action {
         string quota = 1;  // 配额
         Duration fill_interval = 2; // 时间
-        string stragety= 3; // 策略
+        string strategy= 3; // 策略
         string rate_limit_service=4; // 全局限流
     }
 
     message Target {
-        string diretcion = 1;  // 进出
+        string direction = 1;  // 进出
         int32 port = 2;
         string route = 3;
         string host = 4;
@@ -88,9 +84,9 @@ message SmartLimitDescriptor {
 
     Target target = 4;
 
-    string key = 5;
+    string custom_key = 5;
 
-    string value = 6;
+    string custom_value = 6;
 }
 
 message SmartLimitDescriptors {

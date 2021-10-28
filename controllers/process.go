@@ -9,16 +9,15 @@ import (
 	"context"
 	"fmt"
 	"gopkg.in/yaml.v2"
+	networking "istio.io/api/networking/v1alpha3"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"reflect"
 	event_source "slime.io/slime/framework/model/source"
 	"slime.io/slime/modules/limiter/model"
 	"strings"
-
-	networking "istio.io/api/networking/v1alpha3"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -137,11 +136,7 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLim
 			log.Errorf("generated/deleted EnvoyFilter %s failed:%+v", efcr.Name, err)
 		}
 	}
-
-	err := refreshConfigMap(gdesc, r, loc, 1)
-	if err != nil {
-		log.Errorf("reflush ConfigMap err: %+v", err.Error())
-	}
+	refreshConfigMap(gdesc, r, loc)
 
 	instance.Status = microservicev1alpha1.SmartLimiterStatus{
 		RatelimitStatus: descriptor,
@@ -168,6 +163,7 @@ func (r *SmartLimiterReconciler) subscribe(host string, subset interface{}) {
 	}
 }
 
+
 func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLimiterReconciler, obj *v1alpha3.EnvoyFilter) (reconcile.Result, error) {
 	name := obj.GetName()
 	namespace := obj.GetNamespace()
@@ -179,6 +175,7 @@ func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLim
 
 	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, found)
 
+	// 如果新构建的envoyfilter 的spec为空， 且查询的有错且不是notfound,那么从新入队列，需要重试，查询没有错误则说明需要删除该obj
 	// Delete
 	if obj.Spec == nil {
 		if err != nil && !errors.IsNotFound(err) {
@@ -191,6 +188,7 @@ func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLim
 			return reconcile.Result{}, nil
 		}
 	}
+
 
 	// Create
 	if err != nil && errors.IsNotFound(err) {
@@ -222,55 +220,60 @@ func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLim
 	return reconcile.Result{}, nil
 }
 
-// TODO 这里是所有服务的全局限流策略的汇总, 如果删除怎么办 ？
-func refreshConfigMap(desc []*model.Descriptor, r *SmartLimiterReconciler, serviceLoc types.NamespacedName, mode int) error {
+// 必须要提前注入一个名为rate-limit-config的configmap, 如果没有这个configmap 那么ratelimit 服务会无法拉起。
+func refreshConfigMap(desc []*model.Descriptor, r *SmartLimiterReconciler, serviceLoc types.NamespacedName) {
 
 	loc := getConfigMapNamespaceName()
 	found := &v1.ConfigMap{}
 	err := r.Client.Get(context.TODO(), loc, found)
-	if err != nil && errors.IsNotFound(err) {
-		if mode == 1 {
-			configmap := generateConfigMap(desc)
-			if err = r.Client.Create(context.TODO(), configmap); err != nil {
-				log.Infof("creating new configmap in %s:%s err, %+v", loc.Namespace, loc.Name, err.Error())
-				return err
-			}
-		}
-	} else {
-		config := found.Data[model.ConfigMapConfig]
-		ratelimitConfig := &model.RateLimitConfig{}
-		if err = yaml.Unmarshal([]byte(config), &ratelimitConfig); err != nil {
-			log.Infof("unmarshal ratelimitConfig err: %+v", err.Error())
-			return err
-		}
 
-		other := make([]*model.Descriptor, 0)
-		serviceInfo := fmt.Sprintf("%s.%s", serviceLoc.Name, serviceLoc.Namespace)
-		for _, item := range ratelimitConfig.Descriptors {
-			if !strings.Contains(item.Value, serviceInfo) {
-				other = append(other, item)
-			}
-		}
-
-		other = append(other, desc...)
-		configmap := generateConfigMap(other)
-		if !reflect.DeepEqual(found.Data, configmap.Data) {
-			log.Infof("update configmap in %s:%s", loc.Namespace, loc.Name)
-			configmap.ResourceVersion = found.ResourceVersion
-			err = r.Client.Update(context.TODO(), configmap)
-			if err != nil {
-				return err
-			}
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Errorf("configmap %s:%s is not found",loc.Namespace,loc.Name)
+			return
+		} else {
+			log.Errorf("get configmap %s:%s err: %+v",loc.Namespace,loc.Name,err.Error())
+			return
 		}
 	}
-	return nil
+
+	config,ok := found.Data[model.ConfigMapConfig]
+	if !ok {
+		log.Errorf("config.yaml not found in configmap %s:%s",loc.Namespace,loc.Name)
+		return
+	}
+	rc := &model.RateLimitConfig{}
+	if err = yaml.Unmarshal([]byte(config), &rc); err != nil {
+		log.Infof("unmarshal ratelimitConfig %s err: %+v",config, err.Error())
+	}
+
+	// 提取出非本loc的限流配置
+	other := make([]*model.Descriptor, 0)
+	serviceInfo := fmt.Sprintf("%s.%s", serviceLoc.Name, serviceLoc.Namespace)
+	for _, item := range rc.Descriptors {
+		if !strings.Contains(item.Value, serviceInfo) {
+			other = append(other, item)
+		}
+	}
+
+	other = append(other, desc...)
+	configmap := generateConfigMap(other)
+	if !reflect.DeepEqual(found.Data, configmap.Data) {
+		log.Infof("update configmap in %s:%s", loc.Namespace, loc.Name)
+		configmap.ResourceVersion = found.ResourceVersion
+		err = r.Client.Update(context.TODO(), configmap)
+		if err != nil {
+			log.Infof("update configmap %s:%s err: %+v", loc.Namespace, loc.Name,err.Error())
+		}
+	}
+	log.Infof("refreshConfigMap operating normally")
 }
 
 // TODO hard code
 func generateConfigMap(desc []*model.Descriptor) *v1.ConfigMap {
 
 	rateLimitConfig := &model.RateLimitConfig{
-		Domain:      model.QingZhouDomain,
+		Domain:      model.Domain,
 		Descriptors: desc,
 	}
 	b, _ := yaml.Marshal(rateLimitConfig)
@@ -291,3 +294,25 @@ func generateConfigMap(desc []*model.Descriptor) *v1.ConfigMap {
 	}
 	return configmap
 }
+
+
+// TODO
+//func (r *SmartLimiterReconciler)SetGlobalConfigMap() {
+//	loc := getConfigMapNamespaceName()
+//	found := &v1.ConfigMap{}
+//	err := r.Client.Get(context.TODO(), loc, found)
+//
+//	if err != nil && errors.IsNotFound(err) {
+//		log.Errorf("configmap %s:%s is not found",loc.Namespace,loc.Name)
+//		return
+//	}
+//	config,ok := found.Data[model.ConfigMapConfig]
+//	if !ok {
+//		log.Errorf("config.yaml not found in configmap %s:%s",loc.Namespace,loc.Name)
+//		return
+//	}
+//	rc := &model.RateLimitConfig{}
+//	if err = yaml.Unmarshal([]byte(config), &rc); err != nil {
+//		log.Infof("unmarshal ratelimitConfig %s err: %+v",config, err.Error())
+//	}
+//}

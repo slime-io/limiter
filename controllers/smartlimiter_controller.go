@@ -56,6 +56,8 @@ type SmartLimiterReconciler struct {
 
 	lastUpdatePolicy     microserviceslimeiov1alpha1.SmartLimiterSpec
 	lastUpdatePolicyLock *sync.RWMutex
+
+	//globalRateLimitInfo cmap.ConcurrentMap
 }
 
 // +kubebuilder:rbac:groups=microservice.slime.io,resources=smartlimiters,verbs=get;list;watch;create;update;patch;delete
@@ -83,7 +85,9 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.lastUpdatePolicy = microserviceslimeiov1alpha1.SmartLimiterSpec{}
 		r.lastUpdatePolicyLock.Unlock()
 
-		err := refreshConfigMap([]*model.Descriptor{}, r, req.NamespacedName, 0)
+		//TODO if contain global,should refresh
+		refreshConfigMap([]*model.Descriptor{}, r, req.NamespacedName)
+
 		return reconcile.Result{}, err
 	}
 
@@ -132,6 +136,7 @@ func NewReconciler(cfg *v1alpha1.Limiter, mgr ctrl.Manager, env *bootstrap.Envir
 		source:               src,
 		env:                  env,
 		lastUpdatePolicyLock: &sync.RWMutex{},
+		//globalRateLimitInfo: cmap.New(),
 	}
 	r.source.Start(env.Stop)
 	r.WatchSource(env.Stop)

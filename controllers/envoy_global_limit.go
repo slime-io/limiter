@@ -13,6 +13,25 @@ import (
 	"strconv"
 )
 
+
+func generateEnvoyHttpFilterMatch() *networking.EnvoyFilter_EnvoyConfigObjectMatch {
+	return &networking.EnvoyFilter_EnvoyConfigObjectMatch{
+		Context: networking.EnvoyFilter_SIDECAR_INBOUND,
+		ObjectTypes: &networking.EnvoyFilter_EnvoyConfigObjectMatch_Listener{
+			Listener: &networking.EnvoyFilter_ListenerMatch{
+				FilterChain: &networking.EnvoyFilter_ListenerMatch_FilterChainMatch{
+					Filter: &networking.EnvoyFilter_ListenerMatch_FilterMatch{
+						Name: util.Envoy_HttpConnectionManager,
+						SubFilter: &networking.EnvoyFilter_ListenerMatch_SubFilterMatch{
+							Name: util.Envoy_Route,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 // GenerateHttpFilterEnvoyRateLimitPatch
 func generateHttpFilterEnvoyRateLimitPatch(clusterName string) *networking.EnvoyFilter_EnvoyConfigObjectPatch {
 
@@ -22,24 +41,9 @@ func generateHttpFilterEnvoyRateLimitPatch(clusterName string) *networking.Envoy
 		log.Errorf("MessageToStruct err: %+v", err.Error())
 		return nil
 	}
-
 	patch := &networking.EnvoyFilter_EnvoyConfigObjectPatch{
 		ApplyTo: networking.EnvoyFilter_HTTP_FILTER,
-		Match: &networking.EnvoyFilter_EnvoyConfigObjectMatch{
-			Context: networking.EnvoyFilter_SIDECAR_INBOUND,
-			ObjectTypes: &networking.EnvoyFilter_EnvoyConfigObjectMatch_Listener{
-				Listener: &networking.EnvoyFilter_ListenerMatch{
-					FilterChain: &networking.EnvoyFilter_ListenerMatch_FilterChainMatch{
-						Filter: &networking.EnvoyFilter_ListenerMatch_FilterMatch{
-							Name: util.Envoy_HttpConnectionManager,
-							SubFilter: &networking.EnvoyFilter_ListenerMatch_SubFilterMatch{
-								Name: util.Envoy_Route,
-							},
-						},
-					},
-				},
-			},
-		},
+		Match: generateEnvoyHttpFilterMatch(),
 		Patch: &networking.EnvoyFilter_Patch{
 			Operation: networking.EnvoyFilter_Patch_INSERT_BEFORE,
 			Value: &structpb.Struct{
@@ -55,16 +59,16 @@ func generateHttpFilterEnvoyRateLimitPatch(clusterName string) *networking.Envoy
 										Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_UdpaTypedStruct},
 									},
 									util.Struct_Any_TypedUrl: {
-										Kind: &structpb.Value_StringValue{StringValue: "type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit"},
+										Kind: &structpb.Value_StringValue{StringValue: model.TypeUrlEnvoyRateLimit},
 									},
 									util.Struct_Any_Value: {
 										Kind: &structpb.Value_StructValue{
 											StructValue: &structpb.Struct{
 												Fields: map[string]*structpb.Value{
-													"domain": {
-														Kind: &structpb.Value_StringValue{StringValue: model.QingZhouDomain},
+													model.StructDomain: {
+														Kind: &structpb.Value_StringValue{StringValue: model.Domain},
 													},
-													"rate_limit_service": {
+													model.StructRateLimitService: {
 														Kind: &structpb.Value_StructValue{StructValue: t},
 													},
 												},

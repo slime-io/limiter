@@ -5,6 +5,7 @@ import (
 	"fmt"
 	networking "istio.io/api/networking/v1alpha3"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"slime.io/slime/framework/controllers"
 	"slime.io/slime/framework/util"
@@ -28,16 +29,19 @@ func (r *SmartLimiterReconciler) GenerateEnvoyFilters(spec microservicev1alpha1.
 	} else {
 		sets = make([]*networking.Subset, 0, 1)
 	}
-
-	loc := types.NamespacedName{
-		Namespace: instance.Namespace,
-		Name:      instance.Name,
-	}
-
-	svc := &v1.Service{}
-	_ = r.Client.Get(context.TODO(), loc, svc)
-	svcSelector := svc.Spec.Selector
 	sets = append(sets, &networking.Subset{Name: util.Wellkonw_BaseSet})
+
+	loc := types.NamespacedName{Namespace:instance.Namespace,Name:instance.Name}
+	svc := &v1.Service{}
+	if err := r.Client.Get(context.TODO(), loc, svc); err != nil {
+		if errors.IsNotFound(err) {
+			log.Errorf("svc %s:%s is not found",loc.Name,loc.Namespace)
+		} else {
+			log.Errorf("get svc %s:%s err: %+v",loc.Name,loc.Namespace,err.Error())
+		}
+		return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors
+	}
+	svcSelector := svc.Spec.Selector
 
 	for _, set := range sets {
 		if setDescriptor, ok := spec.Sets[set.Name]; ok {
@@ -51,7 +55,7 @@ func (r *SmartLimiterReconciler) GenerateEnvoyFilters(spec microservicev1alpha1.
 								Action: &microservicev1alpha1.SmartLimitDescriptor_Action{
 									Quota:        fmt.Sprintf("%d", rateLimitValue),
 									FillInterval: des.Action.FillInterval,
-									Stragety:     des.Action.Stragety,
+									Strategy:     des.Action.Strategy,
 								},
 								Match:  des.Match,
 								Target: des.Target,
@@ -98,7 +102,7 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDesc
 
 	for _, descriptor := range descriptors {
 		if descriptor.Action != nil {
-			if descriptor.Action.Stragety == model.GlobalSmartLimiter {
+			if descriptor.Action.Strategy == model.GlobalSmartLimiter {
 				globalDescriptors = append(globalDescriptors, descriptor)
 			} else {
 				localDescriptors = append(localDescriptors, descriptor)
@@ -132,7 +136,7 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDesc
 
 	// enable and config plugin envoy.filters.http.local_ratelimit
 	if len(localDescriptors) > 0 {
-		httpFilterLocalRateLimitPatch := generateHttpFilterLocalRateLimit()
+		httpFilterLocalRateLimitPatch := enableHttpFilterLocalRateLimit()
 		ef.ConfigPatches = append(ef.ConfigPatches, httpFilterLocalRateLimitPatch)
 
 		perFilterPatch := generatePerFilterConfig(localDescriptors, loc)
@@ -145,7 +149,7 @@ func descriptorsToGlobalRateLimit(descriptors []*microservicev1alpha1.SmartLimit
 
 	globalDescriptors := make([]*microservicev1alpha1.SmartLimitDescriptor, 0)
 	for _, descriptor := range descriptors {
-		if descriptor.Action.Stragety == model.GlobalSmartLimiter {
+		if descriptor.Action.Strategy == model.GlobalSmartLimiter {
 			globalDescriptors = append(globalDescriptors, descriptor)
 		}
 	}
