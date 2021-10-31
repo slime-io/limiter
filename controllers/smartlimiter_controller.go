@@ -66,8 +66,6 @@ type SmartLimiterReconciler struct {
 func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	_ = context.Background()
 
-	// your logic here
-
 	instance := &microserviceslimeiov1alpha1.SmartLimiter{}
 	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
 
@@ -84,10 +82,8 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.lastUpdatePolicyLock.Lock()
 		r.lastUpdatePolicy = microserviceslimeiov1alpha1.SmartLimiterSpec{}
 		r.lastUpdatePolicyLock.Unlock()
-
-		//TODO if contain global,should refresh
+		//if contain global smart limiter, should delete info in configmap
 		refreshConfigMap([]*model.Descriptor{}, r, req.NamespacedName)
-
 		return reconcile.Result{}, err
 	}
 

@@ -18,48 +18,42 @@ var _ = ginkgo.Describe("SmartLimiter e2e test", func() {
 	f := framework.NewDefaultFramework("limiter")
 	f.SkipNamespaceCreation = true
 
-	ginkgo.It("slime module limiter works", func() {
-
-		//_, err := f.CreateNamespace(nsSlime, nil)
-		//framework.ExpectNoError(err)
-		//
-		//if framework.TestContext.IstioRevison != "" {
-		//	istiodLabelV = framework.TestContext.IstioRevison
-		//}
-		//_, err = f.CreateNamespace(nsApps, map[string]string{istiodLabelKey: istiodLabelV,"istio-injection":"enabled"})
-		//framework.ExpectNoError(err)
-
-
-		defer func() {
-			for i := len(testResourceToDelete) - 1; i >= 0; i-- {
-				cleanupKubectlInputs(testResourceToDelete[i].Namespace, testResourceToDelete[i].Contents)
-				time.Sleep(500 * time.Millisecond)
-			}
-		}()
-		createExampleApps(f)
+	ginkgo.It("limiter: prepare ns and bookinfos", func() {
+		_, err := f.CreateNamespace(nsSlime, nil)
+		framework.ExpectNoError(err)
+		_, err = f.CreateNamespace(nsApps, map[string]string{istioRevKey: substituteValue("istioRevValue", istioRevValue)})
+		framework.ExpectNoError(err)
 		createSlimeBoot(f)
 		createSlimeModuleLimiter(f)
-		createSmartLimiter(f)
-		isLimiterTackEffect(f)
+		createExampleApps(f)
 	})
+
+	ginkgo.It("limiter-1: test envoyfilters", func() {
+		createSmartLimiter(f)
+	})
+
+	ginkgo.It("limiter-1-1: test if the rate limiter take effect", func() {
+		limiterTackEffect(f)
+	})
+
 })
 
 
 func createSlimeBoot(f *framework.Framework) {
 
-	cs := f.ClientSet
 	//crdYaml := readFile(test, "init/crds.yaml")
 	//framework.RunKubectlOrDieInput("", crdYaml, "create", "-f", "-")
 	//defer func() {
 	//	testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: "", Contents: crdYaml})
 	//}()
+
+	cs := f.ClientSet
 	deploySlimeBootYaml := readFile(test, "init/deployment_slime-boot.yaml")
 	deploySlimeBootYaml = strings.ReplaceAll(deploySlimeBootYaml, "{{slimebootTag}}", substituteValue("slimeBootTag", slimebootTag))
+	defer func() {
+		testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: nsSlime, Contents: deploySlimeBootYaml})
+	}()
 	framework.RunKubectlOrDieInput(nsSlime, deploySlimeBootYaml, "create", "-f", "-")
-	//defer func() {
-	//	testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: nsSlime, Contents: deploySlimeBootYaml})
-	//}()
-
 	slimebootDeploymentInstalled := false
 
 	for i := 0; i < 10; i++ {
@@ -87,13 +81,12 @@ func createSlimeBoot(f *framework.Framework) {
 func createSlimeModuleLimiter(f *framework.Framework) {
 
 	cs := f.ClientSet
-
 	slimebootLimitYaml := readFile(test, "samples/limiter/slimeboot_limiter.yaml")
 	slimebootLimitYaml = strings.ReplaceAll(slimebootLimitYaml, "{{limitTag}}", substituteValue("limitTag", limitTag))
 	framework.RunKubectlOrDieInput(nsSlime, slimebootLimitYaml, "create", "-f", "-")
-	//defer func() {
-	//	testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: nsSlime, Contents: slimebootLimitYaml})
-	//}()
+	defer func() {
+		testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: nsSlime, Contents: slimebootLimitYaml})
+	}()
 	limitDeploymentInstalled := false
 
 	for i := 0; i < 60; i++ {
@@ -117,7 +110,6 @@ func createSlimeModuleLimiter(f *framework.Framework) {
 	}
 	ginkgo.By("slimemodule limit installs successfully")
 }
-
 
 func createExampleApps(f *framework.Framework) {
 	cs := f.ClientSet
@@ -153,9 +145,9 @@ func createSmartLimiter(f *framework.Framework) {
 	}()
 
 	smartLimiterGVR := schema.GroupVersionResource{
-		Group:    "microservice.slime.io",
-		Version:  "v1alpha1",
-		Resource: "smartlimiters",
+		Group:    slGroup,
+		Version:  slVersion,
+		Resource: slResource,
 	}
 	created := false
 	for i := 0; i < 60; i++ {
@@ -173,9 +165,9 @@ func createSmartLimiter(f *framework.Framework) {
 
 	created = false
 	envoyFilterGVR := schema.GroupVersionResource{
-		Group:    "networking.istio.io",
-		Version:  "v1alpha3",
-		Resource: "envoyfilters",
+		Group:    efGroup,
+		Version:  efVersion,
+		Resource: efResource,
 	}
 	for i := 0; i < 30; i++ {
 		_, err := f.DynamicClient.Resource(envoyFilterGVR).Namespace(nsApps).Get("productpage.temp.ratelimit", metav1.GetOptions{})
@@ -194,8 +186,7 @@ func createSmartLimiter(f *framework.Framework) {
 
 // curl -I http://productpage:9080/productpage
 // curl -I http://reviews:9080/
-
-func isLimiterTackEffect(f *framework.Framework) {
+func limiterTackEffect(f *framework.Framework) {
 	time.Sleep(5*time.Second)
 	pods,err := f.ClientSet.CoreV1().Pods(nsApps).List(metav1.ListOptions{})
 	framework.ExpectNoError(err)

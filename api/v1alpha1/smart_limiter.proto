@@ -58,8 +58,33 @@ message SmartLimiterStatus {
 message SmartLimitDescriptor {
     message HeaderMatcher {
         string name = 1;
-        string regex_match = 2;
-        string present_match = 3;
+
+        // If specified, header match will be performed based on the value of the header.
+        // This field is deprecated. Please use :ref:`string_match <envoy_v3_api_field_config.route.v3.HeaderMatcher.string_match>`.
+        string exact_match = 2;
+
+        // If specified, this regex string is a regular expression rule which implies the entire request
+        // header value must match the regex. The rule will not match if only a subsequence of the
+        // request header value matches the regex.
+        // This field is deprecated. Please use :ref:`string_match <envoy_v3_api_field_config.route.v3.HeaderMatcher.string_match>`.
+        string regex_match = 3;
+
+        // If specified as true, header match will be performed based on whether the header is in the
+        // request. If specified as false, header match will be performed based on whether the header is absent.
+        string present_match = 4;
+
+        // * The prefix *abcd* matches the value *abcdxyz*, but not for *abcxyz*.
+        string prefix_match = 5;
+
+        // * The suffix *abcd* matches the value *xyzabcd*, but not for *xyzbcd*.
+        string suffix_match = 6;
+
+        // If specified, the match result will be inverted before checking. Defaults to false.
+        //
+        // Examples:
+        //
+        // * The regex ``\d{3}`` does not match the value *1234*, so it will match when inverted.
+        string invert_match = 7;
     }
 
     message Action {

@@ -25,4 +25,11 @@ const (
 
 	StructRateLimitService = "rate_limit_service"
 
+	TypePerFilterConfig = "typed_per_filter_config"
+
+	EnvoyFiltersHttpRateLimit = "envoy.filters.http.ratelimit"
+
+	EnvoyStatPrefix = "stat_prefix"
+
+	EnvoyHttpLocalRateLimiterStatPrefix = "http_local_rate_limiter"
 )

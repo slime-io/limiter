@@ -15,27 +15,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"reflect"
-	event_source "slime.io/slime/framework/model/source"
-	"slime.io/slime/modules/limiter/model"
-	"strings"
-
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"slime.io/slime/framework/apis/networking/v1alpha3"
 	slime_model "slime.io/slime/framework/model"
+	event_source "slime.io/slime/framework/model/source"
 	"slime.io/slime/framework/util"
 	microservicev1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
+	"slime.io/slime/modules/limiter/model"
+	"strings"
 )
 
-func (r *SmartLimiterReconciler) getMaterial(loc types.NamespacedName) map[string]string {
-	if i, ok := r.metricInfo.Get(loc.Namespace + "/" + loc.Name); ok {
-		if ep, ok := i.(*slime_model.Endpoints); ok {
-			return util.CopyMap(ep.Info)
-		}
-	}
-	return nil
-}
 func (r *SmartLimiterReconciler) WatchSource(stop <-chan struct{}) {
+	//t := time.NewTicker(time.Second * 30)
 	go func() {
 		for {
 			select {
@@ -48,6 +40,11 @@ func (r *SmartLimiterReconciler) WatchSource(stop <-chan struct{}) {
 						log.Errorf("error:%v", err)
 					}
 				}
+			//case <- t.C:
+			//	found := &v1alpha3.EnvoyFilterList{}
+			//	if err := r.Client.List(context.TODO(),found,nil); err != nil {
+			//
+			//	}
 			}
 		}
 	}()
@@ -91,14 +88,16 @@ func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[str
 	}
 }
 
+// refresh envoy filters and configmap
 func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLimiter) (reconcile.Result, error) {
+	var err error
 	loc := types.NamespacedName{
 		Namespace: instance.Namespace,
 		Name:      instance.Name,
 	}
 	material := r.getMaterial(loc)
 	if instance.Spec.Sets == nil {
-		return reconcile.Result{}, util.Error{M: "invalid rateLimit spec"}
+		return reconcile.Result{}, util.Error{M: "invalid rateLimit spec with none sets"}
 	}
 	spec := instance.Spec
 
@@ -106,7 +105,10 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLim
 	var descriptor map[string]*microservicev1alpha1.SmartLimitDescriptors
 	var gdesc []*model.Descriptor
 
-	efs, descriptor, gdesc = r.GenerateEnvoyFilters(spec, material, instance)
+	efs, descriptor, gdesc,err = r.GenerateEnvoyConfigs(spec, material, instance)
+	if err != nil {
+		return reconcile.Result{},err
+	}
 	for k, ef := range efs {
 		var efcr *v1alpha3.EnvoyFilter
 		if k == util.Wellkonw_BaseSet {
@@ -137,7 +139,6 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLim
 		}
 	}
 	refreshConfigMap(gdesc, r, loc)
-
 	instance.Status = microservicev1alpha1.SmartLimiterStatus{
 		RatelimitStatus: descriptor,
 		MetricStatus:    material,
@@ -148,6 +149,9 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLim
 	return reconcile.Result{}, nil
 }
 
+// TODO different with old version
+// the function will not trigger if subset is changed
+// if subset is deleted, how to delete the exist envoyfilters, add anohter function to delete the efs ?
 func (r *SmartLimiterReconciler) subscribe(host string, subset interface{}) {
 	if name, ns, ok := util.IsK8SService(host); ok {
 		loc := types.NamespacedName{Name: name, Namespace: ns}
@@ -163,6 +167,14 @@ func (r *SmartLimiterReconciler) subscribe(host string, subset interface{}) {
 	}
 }
 
+func (r *SmartLimiterReconciler) getMaterial(loc types.NamespacedName) map[string]string {
+	if i, ok := r.metricInfo.Get(loc.Namespace + "/" + loc.Name); ok {
+		if ep, ok := i.(*slime_model.Endpoints); ok {
+			return util.CopyMap(ep.Info)
+		}
+	}
+	return nil
+}
 
 func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLimiterReconciler, obj *v1alpha3.EnvoyFilter) (reconcile.Result, error) {
 	name := obj.GetName()
@@ -188,7 +200,6 @@ func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLim
 			return reconcile.Result{}, nil
 		}
 	}
-
 
 	// Create
 	if err != nil && errors.IsNotFound(err) {
@@ -220,73 +231,68 @@ func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLim
 	return reconcile.Result{}, nil
 }
 
-// 必须要提前注入一个名为rate-limit-config的configmap, 如果没有这个configmap 那么ratelimit 服务会无法拉起。
+// if configmap rate-limit-config not exist, ratelimit server will not running
 func refreshConfigMap(desc []*model.Descriptor, r *SmartLimiterReconciler, serviceLoc types.NamespacedName) {
 
 	loc := getConfigMapNamespaceName()
+
 	found := &v1.ConfigMap{}
 	err := r.Client.Get(context.TODO(), loc, found)
 
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Errorf("configmap %s:%s is not found",loc.Namespace,loc.Name)
+			log.Errorf("configmap %s:%s is not found, can not refresh configmap", loc.Namespace, loc.Name)
 			return
 		} else {
-			log.Errorf("get configmap %s:%s err: %+v",loc.Namespace,loc.Name,err.Error())
+			log.Errorf("get configmap %s:%s err: %+v, cant not refresh configmap", loc.Namespace, loc.Name, err.Error())
 			return
 		}
 	}
 
-	config,ok := found.Data[model.ConfigMapConfig]
+	config, ok := found.Data[model.ConfigMapConfig]
 	if !ok {
-		log.Errorf("config.yaml not found in configmap %s:%s",loc.Namespace,loc.Name)
+		log.Errorf("config.yaml not found in configmap %s:%s", loc.Namespace, loc.Name)
 		return
 	}
 	rc := &model.RateLimitConfig{}
 	if err = yaml.Unmarshal([]byte(config), &rc); err != nil {
-		log.Infof("unmarshal ratelimitConfig %s err: %+v",config, err.Error())
+		log.Infof("unmarshal ratelimitConfig %s err: %+v", config, err.Error())
+		return
 	}
 
-	// 提取出非本loc的限流配置
-	other := make([]*model.Descriptor, 0)
+	newCm := make([]*model.Descriptor, 0)
 	serviceInfo := fmt.Sprintf("%s.%s", serviceLoc.Name, serviceLoc.Namespace)
 	for _, item := range rc.Descriptors {
 		if !strings.Contains(item.Value, serviceInfo) {
-			other = append(other, item)
+			newCm = append(newCm, item)
 		}
 	}
+	newCm = append(newCm, desc...)
 
-	other = append(other, desc...)
-	configmap := generateConfigMap(other)
+	configmap := constructConfigMap(newCm)
 	if !reflect.DeepEqual(found.Data, configmap.Data) {
-		log.Infof("update configmap in %s:%s", loc.Namespace, loc.Name)
+		log.Infof("update configmap %s:%s", loc.Namespace, loc.Name)
 		configmap.ResourceVersion = found.ResourceVersion
 		err = r.Client.Update(context.TODO(), configmap)
 		if err != nil {
-			log.Infof("update configmap %s:%s err: %+v", loc.Namespace, loc.Name,err.Error())
+			log.Infof("update configmap %s:%s err: %+v", loc.Namespace, loc.Name, err.Error())
+			return
 		}
 	}
-	log.Infof("refreshConfigMap operating normally")
 }
 
-// TODO hard code
-func generateConfigMap(desc []*model.Descriptor) *v1.ConfigMap {
-
+func constructConfigMap(desc []*model.Descriptor) *v1.ConfigMap {
 	rateLimitConfig := &model.RateLimitConfig{
 		Domain:      model.Domain,
 		Descriptors: desc,
 	}
 	b, _ := yaml.Marshal(rateLimitConfig)
 	loc := getConfigMapNamespaceName()
-
 	configmap := &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      loc.Name,
 			Namespace: loc.Namespace,
-			Labels: map[string]string{
-				"app":        "rate-limit",
-				"manager-by": "limiter",
-			},
+			Labels:    generateConfigMapLabels(),
 		},
 		Data: map[string]string{
 			model.ConfigMapConfig: string(b),
@@ -295,6 +301,12 @@ func generateConfigMap(desc []*model.Descriptor) *v1.ConfigMap {
 	return configmap
 }
 
+// TODO query from global config
+func generateConfigMapLabels() map[string]string {
+	labels := make(map[string]string)
+	labels["app"] = "rate-limit"
+	return labels
+}
 
 // TODO
 //func (r *SmartLimiterReconciler)SetGlobalConfigMap() {

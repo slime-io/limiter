@@ -13,9 +13,9 @@ import (
 	"slime.io/slime/modules/limiter/model"
 )
 
-func (r *SmartLimiterReconciler) GenerateEnvoyFilters(spec microservicev1alpha1.SmartLimiterSpec,
+func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha1.SmartLimiterSpec,
 	material map[string]string, instance *microservicev1alpha1.SmartLimiter) (
-	map[string]*networking.EnvoyFilter, map[string]*microservicev1alpha1.SmartLimitDescriptors, []*model.Descriptor) {
+	map[string]*networking.EnvoyFilter, map[string]*microservicev1alpha1.SmartLimitDescriptors, []*model.Descriptor,error) {
 
 	materialInterface := util.MapToMapInterface(material)
 	globalDescriptors := make([]*model.Descriptor, 0)
@@ -31,15 +31,15 @@ func (r *SmartLimiterReconciler) GenerateEnvoyFilters(spec microservicev1alpha1.
 	}
 	sets = append(sets, &networking.Subset{Name: util.Wellkonw_BaseSet})
 
-	loc := types.NamespacedName{Namespace:instance.Namespace,Name:instance.Name}
+	loc := types.NamespacedName{Namespace: instance.Namespace, Name: instance.Name}
 	svc := &v1.Service{}
 	if err := r.Client.Get(context.TODO(), loc, svc); err != nil {
 		if errors.IsNotFound(err) {
-			log.Errorf("svc %s:%s is not found",loc.Name,loc.Namespace)
+			log.Errorf("svc %s:%s is not found", loc.Name, loc.Namespace)
 		} else {
-			log.Errorf("get svc %s:%s err: %+v",loc.Name,loc.Namespace,err.Error())
+			log.Errorf("get svc %s:%s err: %+v", loc.Name, loc.Namespace, err.Error())
 		}
-		return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors
+		return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors,err
 	}
 	svcSelector := svc.Spec.Selector
 
@@ -84,10 +84,9 @@ func (r *SmartLimiterReconciler) GenerateEnvoyFilters(spec microservicev1alpha1.
 			setsEnvoyFilter[set.Name] = nil
 		}
 	}
-	return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors
+	return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors,nil
 }
 
-// DescriptorsToEnvoyFilter  convert SmartLimitDescriptor to envoy filter
 func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDescriptor, labels map[string]string, loc types.NamespacedName) *networking.EnvoyFilter {
 
 	ef := &networking.EnvoyFilter{
@@ -96,10 +95,10 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDesc
 		},
 	}
 	ef.ConfigPatches = make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, 0)
-
 	globalDescriptors := make([]*microservicev1alpha1.SmartLimitDescriptor, 0)
 	localDescriptors := make([]*microservicev1alpha1.SmartLimitDescriptor, 0)
 
+	// split descriptors due to different envoy plugins
 	for _, descriptor := range descriptors {
 		if descriptor.Action != nil {
 			if descriptor.Action.Strategy == model.GlobalSmartLimiter {
@@ -121,14 +120,15 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDesc
 
 	// config plugin envoy.filters.http.ratelimit
 	if len(globalDescriptors) > 0 {
-		var rlService string
+		var rlServer string
 		for _, item := range globalDescriptors {
 			if item.Action.RateLimitService != "" {
-				rlService = item.Action.RateLimitService
+				rlServer = item.Action.RateLimitService
 				break
 			}
 		}
-		httpFilterEnvoyRateLimitPatch := generateHttpFilterEnvoyRateLimitPatch(getRateLimiterServerCluster(rlService))
+		server := getRateLimiterServerCluster(rlServer)
+		httpFilterEnvoyRateLimitPatch := generateEnvoyHttpFilterGlobalRateLimitPatch(server)
 		if httpFilterEnvoyRateLimitPatch != nil {
 			ef.ConfigPatches = append(ef.ConfigPatches, httpFilterEnvoyRateLimitPatch)
 		}
@@ -136,10 +136,10 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDesc
 
 	// enable and config plugin envoy.filters.http.local_ratelimit
 	if len(localDescriptors) > 0 {
-		httpFilterLocalRateLimitPatch := enableHttpFilterLocalRateLimit()
+		httpFilterLocalRateLimitPatch := generateHttpFilterLocalRateLimitPatch()
 		ef.ConfigPatches = append(ef.ConfigPatches, httpFilterLocalRateLimitPatch)
 
-		perFilterPatch := generatePerFilterConfig(localDescriptors, loc)
+		perFilterPatch := generateLocalRateLimitPerFilterPatch(localDescriptors, loc)
 		ef.ConfigPatches = append(ef.ConfigPatches, perFilterPatch...)
 	}
 	return ef
@@ -153,5 +153,5 @@ func descriptorsToGlobalRateLimit(descriptors []*microservicev1alpha1.SmartLimit
 			globalDescriptors = append(globalDescriptors, descriptor)
 		}
 	}
-	return generateRatelimitConfig(globalDescriptors, loc)
+	return generateGlobalRateLimitDescriptor(globalDescriptors, loc)
 }
