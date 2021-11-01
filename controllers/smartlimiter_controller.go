@@ -32,7 +32,7 @@ import (
 	event_source "slime.io/slime/framework/model/source"
 	"slime.io/slime/framework/model/source/aggregate"
 	"slime.io/slime/framework/model/source/k8s"
-	microserviceslimeiov1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
+	microserviceslimeiov1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
 	"slime.io/slime/modules/limiter/controllers/multicluster"
 	"slime.io/slime/modules/limiter/model"
 	"sync"
@@ -54,7 +54,7 @@ type SmartLimiterReconciler struct {
 	eventChan      chan event_source.Event
 	source         event_source.Source
 
-	lastUpdatePolicy     microserviceslimeiov1alpha1.SmartLimiterSpec
+	lastUpdatePolicy     microserviceslimeiov1alpha2.SmartLimiterSpec
 	lastUpdatePolicyLock *sync.RWMutex
 
 	//globalRateLimitInfo cmap.ConcurrentMap
@@ -66,7 +66,7 @@ type SmartLimiterReconciler struct {
 func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	_ = context.Background()
 
-	instance := &microserviceslimeiov1alpha1.SmartLimiter{}
+	instance := &microserviceslimeiov1alpha2.SmartLimiter{}
 	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
 
 	// 异常分支
@@ -80,7 +80,7 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.metricInfo.Pop(req.Namespace + "/" + req.Name)
 		r.source.WatchRemove(req.NamespacedName)
 		r.lastUpdatePolicyLock.Lock()
-		r.lastUpdatePolicy = microserviceslimeiov1alpha1.SmartLimiterSpec{}
+		r.lastUpdatePolicy = microserviceslimeiov1alpha2.SmartLimiterSpec{}
 		r.lastUpdatePolicyLock.Unlock()
 		//if contain global smart limiter, should delete info in configmap
 		refreshConfigMap([]*model.Descriptor{}, r, req.NamespacedName)
@@ -105,7 +105,7 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 
 func (r *SmartLimiterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&microserviceslimeiov1alpha1.SmartLimiter{}).
+		For(&microserviceslimeiov1alpha2.SmartLimiter{}).
 		Complete(r)
 }
 

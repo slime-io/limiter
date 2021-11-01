@@ -15,7 +15,7 @@ import (
 	"slime.io/slime/framework/bootstrap"
 	istiocontroller "slime.io/slime/framework/controllers"
 	"slime.io/slime/framework/util"
-	limiterapiv1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
+	limiterapiv1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
 	"slime.io/slime/modules/limiter/controllers"
 )
 
@@ -34,7 +34,7 @@ func (m *Module) Config() proto.Message {
 func (m *Module) InitScheme(scheme *runtime.Scheme) error {
 	for _, f := range []func(*runtime.Scheme) error{
 		clientgoscheme.AddToScheme,
-		limiterapiv1alpha1.AddToScheme,
+		limiterapiv1alpha2.AddToScheme,
 		istioapi.AddToScheme,
 	} {
 		if err := f(scheme); err != nil {

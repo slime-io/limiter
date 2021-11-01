@@ -1,137 +1,29 @@
-/*
-* @Author: yangdihang
-* @Date: 2020/5/21
-*/
-
 syntax = "proto3";
-package slime.microservice.v1alpha1;
+import "pkg/apis/microservice/v1alpha1/local_flow_control.proto";
+package netease.microservice.v1alpha1;
 
-option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha1";
 
-//apiVersion: microservice.slime.io/v1alpha1
-//kind: SmartLimiter
-//metadata:
-//  name: b
-//  namespace: powerful
-//spec:
-//  sets:
-//    _base:
-//      descriptors:
-//      - action:
-//          fill_interval:
-//            seconds: 60
-//          quota: "60/{{._base.pod}}"
-//          strategy: average
-//          //rate_limit_service: "outbound|18081||rate-limit.istio-system.svc.cluster.local"
-//        conditon: "true"
-//        target:
-//          //direction: inbound  #default
-//          port: 9080
-//          //route: default
-//          #host: "b.powerful.svc.cluster.local"
+option java_package = "io.envoyproxy.envoy.config.filter.http.local_flow_control.v2";
+option java_outer_classname = "LocalFlowControlProto";
+option java_multiple_files = true;
 
+option go_package = "yun.netease.com/slime/pkg/apis/microservice/v1alpha1";
 
 message SmartLimiterSpec {
-    // subset rate-limit,the key is subset name.
-    map<string, SmartLimitDescriptors> sets = 2;
+    envoy.config.filter.http.local_flow_control.v2.FlowControlConfSpec ratelimitConfig = 1;
 }
 
 message SmartLimiterStatus {
-    map<string, SmartLimitDescriptors> ratelimitStatus = 1;
-    map<string, string> metricStatus = 2;
-    message ServiceStatus {
-        // Deprecated
+    envoy.config.filter.http.local_flow_control.v2.FlowControlConfStatus ratelimitStatus = 1;
+    map<string, string> endPointStatus = 2;
+    message ServiceStatus{
         map<string, string> selector = 1;
-        message Listener {
-            // Deprecated
+        message Listener{
             string name = 1;
-            // Deprecated
             uint32 port = 2;
         }
-        // Deprecated
         repeated Listener listener = 2;
     }
-    // Deprecated
     ServiceStatus serviceStatus = 3;
-}
-
-message SmartLimitDescriptor {
-    message HeaderMatcher {
-        string name = 1;
-
-        // If specified, header match will be performed based on the value of the header.
-        // This field is deprecated. Please use :ref:`string_match <envoy_v3_api_field_config.route.v3.HeaderMatcher.string_match>`.
-        string exact_match = 2;
-
-        // If specified, this regex string is a regular expression rule which implies the entire request
-        // header value must match the regex. The rule will not match if only a subsequence of the
-        // request header value matches the regex.
-        // This field is deprecated. Please use :ref:`string_match <envoy_v3_api_field_config.route.v3.HeaderMatcher.string_match>`.
-        string regex_match = 3;
-
-        // If specified as true, header match will be performed based on whether the header is in the
-        // request. If specified as false, header match will be performed based on whether the header is absent.
-        string present_match = 4;
-
-        // * The prefix *abcd* matches the value *abcdxyz*, but not for *abcxyz*.
-        string prefix_match = 5;
-
-        // * The suffix *abcd* matches the value *xyzabcd*, but not for *xyzbcd*.
-        string suffix_match = 6;
-
-        // If specified, the match result will be inverted before checking. Defaults to false.
-        //
-        // Examples:
-        //
-        // * The regex ``\d{3}`` does not match the value *1234*, so it will match when inverted.
-        string invert_match = 7;
-    }
-
-    message Action {
-        string quota = 1;  // 配额
-        Duration fill_interval = 2; // 时间
-        string strategy= 3; // 策略
-        string rate_limit_service=4; // 全局限流
-    }
-
-    message Target {
-        string direction = 1;  // 进出
-        int32 port = 2;
-        string route = 3;
-        string host = 4;
-    }
-
-    string condition = 1;
-
-    Action action = 2;
-
-    repeated HeaderMatcher match = 3;
-
-    Target target = 4;
-
-    string custom_key = 5;
-
-    string custom_value = 6;
-}
-
-message SmartLimitDescriptors {
-    // Description of current rate-limit
-    repeated SmartLimitDescriptor descriptor = 4;
-}
-
-message Duration {
-
-    // Signed seconds of the span of time. Must be from -315,576,000,000
-    // to +315,576,000,000 inclusive. Note: these bounds are computed from:
-    // 60 sec/min * 60 min/hr * 24 hr/day * 365.25 days/year * 10000 years
-    int64 seconds = 1;
-
-    // Signed fractions of a second at nanosecond resolution of the span
-    // of time. Durations less than one second are represented with a 0
-    // `seconds` field and a positive or negative `nanos` field. For durations
-    // of one second or more, a non-zero value for the `nanos` field must be
-    // of the same sign as the `seconds` field. Must be from -999,999,999
-    // to +999,999,999 inclusive.
-    int32 nanos = 2;
 }
 
