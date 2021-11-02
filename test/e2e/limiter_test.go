@@ -32,7 +32,7 @@ var _ = ginkgo.Describe("SmartLimiter e2e test", func() {
 	ginkgo.It("all", func() {
 		_, err := f.CreateNamespace(nsSlime, nil)
 		framework.ExpectNoError(err)
-		_, err = f.CreateNamespace(nsApps, map[string]string{istioRevKey: substituteValue("istioRevValue", istioRevValue)})
+		_, err = f.CreateNamespace(nsApps, map[string]string{istioRevKey: substituteValue("istioRevValue", istioRevValue),"istio-injection":"enabled"})
 		framework.ExpectNoError(err)
 		createSlimeBoot(f)
 		createSlimeModuleLimiter(f)

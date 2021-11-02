@@ -166,11 +166,11 @@ func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDes
 		headers := make([]*envoy_config_route_v3.HeaderMatcher, 0)
 		for _, match := range descriptor.Match {
 			header := &envoy_config_route_v3.HeaderMatcher{}
-
-			if match.RegexMatch != "" {
+			switch {
+			case match.RegexMatch != "" :
 				header.Name = match.Name
 				header.HeaderMatchSpecifier = generateSafeRegexMatch(match)
-			} else {
+			case match.PresentMatch != "" :
 				present := false
 				if match.PresentMatch == "true" {
 					present = true
@@ -181,6 +181,21 @@ func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDes
 				}
 			}
 			headers = append(headers, header)
+			
+			//if match.RegexMatch != "" {
+			//	header.Name = match.Name
+			//	header.HeaderMatchSpecifier = generateSafeRegexMatch(match)
+			//} else {
+			//	present := false
+			//	if match.PresentMatch == "true" {
+			//		present = true
+			//	}
+			//	header.Name = match.Name
+			//	header.HeaderMatchSpecifier = &envoy_config_route_v3.HeaderMatcher_PresentMatch{
+			//		PresentMatch: present,
+			//	}
+			//}
+
 		}
 		action.ActionSpecifier = &envoy_config_route_v3.RateLimit_Action_HeaderValueMatch_{
 			HeaderValueMatch: &envoy_config_route_v3.RateLimit_Action_HeaderValueMatch{

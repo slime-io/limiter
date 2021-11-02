@@ -84,8 +84,6 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.lastUpdatePolicyLock.Unlock()
 		//if contain global smart limiter, should delete info in configmap
 		refreshConfigMap([]*model.Descriptor{}, r, req.NamespacedName)
-
-
 		return reconcile.Result{}, err
 	}
 
