@@ -9,18 +9,18 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"slime.io/slime/framework/controllers"
 	"slime.io/slime/framework/util"
-	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
+	microservicev1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
 	"slime.io/slime/modules/limiter/model"
 )
 
-func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.SmartLimiterSpec,
-	material map[string]string, instance *microservicev1alpha2.SmartLimiter) (
-	map[string]*networking.EnvoyFilter, map[string]*microservicev1alpha2.SmartLimitDescriptors, []*model.Descriptor,error) {
+func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha1.SmartLimiterSpec,
+	material map[string]string, instance *microservicev1alpha1.SmartLimiter) (
+	map[string]*networking.EnvoyFilter, map[string]*microservicev1alpha1.SmartLimitDescriptors, []*model.Descriptor,error) {
 
 	materialInterface := util.MapToMapInterface(material)
 	globalDescriptors := make([]*model.Descriptor, 0)
 	setsEnvoyFilter := make(map[string]*networking.EnvoyFilter)
-	setsSmartLimitDescriptor := make(map[string]*microservicev1alpha2.SmartLimitDescriptors)
+	setsSmartLimitDescriptor := make(map[string]*microservicev1alpha1.SmartLimitDescriptors)
 	host := util.UnityHost(instance.Name, instance.Namespace)
 
 	var sets []*networking.Subset
@@ -46,13 +46,13 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 	for _, set := range sets {
 		if setDescriptor, ok := spec.Sets[set.Name]; ok {
 
-			validDescriptor := &microservicev1alpha2.SmartLimitDescriptors{}
+			validDescriptor := &microservicev1alpha1.SmartLimitDescriptors{}
 			for _, des := range setDescriptor.Descriptor_ {
 				if shouldUpdate, _ := util.CalculateTemplateBool(des.Condition, materialInterface); shouldUpdate {
 					if des.Action != nil {
 						if rateLimitValue, err := util.CalculateTemplate(des.Action.Quota, materialInterface); err == nil {
-							validDescriptor.Descriptor_ = append(validDescriptor.Descriptor_, &microservicev1alpha2.SmartLimitDescriptor{
-								Action: &microservicev1alpha2.SmartLimitDescriptor_Action{
+							validDescriptor.Descriptor_ = append(validDescriptor.Descriptor_, &microservicev1alpha1.SmartLimitDescriptor{
+								Action: &microservicev1alpha1.SmartLimitDescriptor_Action{
 									Quota:        fmt.Sprintf("%d", rateLimitValue),
 									FillInterval: des.Action.FillInterval,
 									Strategy:     des.Action.Strategy,
@@ -87,7 +87,7 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 	return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors,nil
 }
 
-func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha2.SmartLimitDescriptor, labels map[string]string, loc types.NamespacedName) *networking.EnvoyFilter {
+func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha1.SmartLimitDescriptor, labels map[string]string, loc types.NamespacedName) *networking.EnvoyFilter {
 
 	ef := &networking.EnvoyFilter{
 		WorkloadSelector: &networking.WorkloadSelector{
@@ -95,8 +95,8 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha2.SmartLimitDesc
 		},
 	}
 	ef.ConfigPatches = make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, 0)
-	globalDescriptors := make([]*microservicev1alpha2.SmartLimitDescriptor, 0)
-	localDescriptors := make([]*microservicev1alpha2.SmartLimitDescriptor, 0)
+	globalDescriptors := make([]*microservicev1alpha1.SmartLimitDescriptor, 0)
+	localDescriptors := make([]*microservicev1alpha1.SmartLimitDescriptor, 0)
 
 	// split descriptors due to different envoy plugins
 	for _, descriptor := range descriptors {
@@ -145,9 +145,9 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha2.SmartLimitDesc
 	return ef
 }
 
-func descriptorsToGlobalRateLimit(descriptors []*microservicev1alpha2.SmartLimitDescriptor, loc types.NamespacedName) []*model.Descriptor {
+func descriptorsToGlobalRateLimit(descriptors []*microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) []*model.Descriptor {
 
-	globalDescriptors := make([]*microservicev1alpha2.SmartLimitDescriptor, 0)
+	globalDescriptors := make([]*microservicev1alpha1.SmartLimitDescriptor, 0)
 	for _, descriptor := range descriptors {
 		if descriptor.Action.Strategy == model.GlobalSmartLimiter {
 			globalDescriptors = append(globalDescriptors, descriptor)

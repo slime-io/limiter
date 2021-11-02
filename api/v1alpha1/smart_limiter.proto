@@ -6,7 +6,7 @@
 syntax = "proto3";
 package slime.microservice.v1alpha2;
 
-option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha2";
+option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha1";
 
 //apiVersion: microservice.slime.io/v1alpha1
 //kind: SmartLimiter

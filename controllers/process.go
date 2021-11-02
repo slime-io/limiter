@@ -21,7 +21,7 @@ import (
 	slime_model "slime.io/slime/framework/model"
 	event_source "slime.io/slime/framework/model/source"
 	"slime.io/slime/framework/util"
-	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
+	microservicev1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
 	"slime.io/slime/modules/limiter/model"
 	"strings"
 )
@@ -69,7 +69,7 @@ func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[str
 		}
 	}
 
-	instance := &microservicev1alpha2.SmartLimiter{}
+	instance := &microservicev1alpha1.SmartLimiter{}
 	err := r.Client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -89,7 +89,7 @@ func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[str
 }
 
 // refresh envoy filters and configmap
-func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLimiter) (reconcile.Result, error) {
+func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha1.SmartLimiter) (reconcile.Result, error) {
 	var err error
 	loc := types.NamespacedName{
 		Namespace: instance.Namespace,
@@ -102,7 +102,7 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLim
 	spec := instance.Spec
 
 	var efs map[string]*networking.EnvoyFilter
-	var descriptor map[string]*microservicev1alpha2.SmartLimitDescriptors
+	var descriptor map[string]*microservicev1alpha1.SmartLimitDescriptors
 	var gdesc []*model.Descriptor
 
 	efs, descriptor, gdesc,err = r.GenerateEnvoyConfigs(spec, material, instance)
@@ -139,7 +139,7 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLim
 		}
 	}
 	refreshConfigMap(gdesc, r, loc)
-	instance.Status = microservicev1alpha2.SmartLimiterStatus{
+	instance.Status = microservicev1alpha1.SmartLimiterStatus{
 		RatelimitStatus: descriptor,
 		MetricStatus:    material,
 	}
@@ -155,7 +155,7 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLim
 func (r *SmartLimiterReconciler) subscribe(host string, subset interface{}) {
 	if name, ns, ok := util.IsK8SService(host); ok {
 		loc := types.NamespacedName{Name: name, Namespace: ns}
-		instance := &microservicev1alpha2.SmartLimiter{}
+		instance := &microservicev1alpha1.SmartLimiter{}
 		err := r.Client.Get(context.TODO(), loc, instance)
 		if err != nil {
 			if !errors.IsNotFound(err) {
@@ -176,7 +176,7 @@ func (r *SmartLimiterReconciler) getMaterial(loc types.NamespacedName) map[strin
 	return nil
 }
 
-func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLimiterReconciler, obj *v1alpha3.EnvoyFilter) (reconcile.Result, error) {
+func refreshEnvoyFilter(instance *microservicev1alpha1.SmartLimiter, r *SmartLimiterReconciler, obj *v1alpha3.EnvoyFilter) (reconcile.Result, error) {
 	name := obj.GetName()
 	namespace := obj.GetNamespace()
 
