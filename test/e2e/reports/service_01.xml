@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-  <testsuite name="e2e test suite" tests="1" failures="0" errors="0" time="115.452">
-      <testcase name="SmartLimiter e2e test slime module limiter works" classname="e2e test suite" time="115.4523186"></testcase>
+  <testsuite name="e2e test suite" tests="1" failures="0" errors="0" time="48.784">
+      <testcase name="SmartLimiter e2e test prepare ns and bookinfos" classname="e2e test suite" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="SmartLimiter e2e test create smartlimiter and envoyfilters" classname="e2e test suite" time="0">
+          <skipped></skipped>
+      </testcase>
+      <testcase name="SmartLimiter e2e test verify limiter" classname="e2e test suite" time="48.7640194"></testcase>
   </testsuite>

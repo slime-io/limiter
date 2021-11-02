@@ -18,7 +18,7 @@ var _ = ginkgo.Describe("SmartLimiter e2e test", func() {
 	f := framework.NewDefaultFramework("limiter")
 	f.SkipNamespaceCreation = true
 
-	ginkgo.It("limiter: prepare ns and bookinfos", func() {
+	ginkgo.It("prepare slimeboot limiter ns and bookinfos", func() {
 		_, err := f.CreateNamespace(nsSlime, nil)
 		framework.ExpectNoError(err)
 		_, err = f.CreateNamespace(nsApps, map[string]string{istioRevKey: substituteValue("istioRevValue", istioRevValue)})
@@ -28,25 +28,38 @@ var _ = ginkgo.Describe("SmartLimiter e2e test", func() {
 		createExampleApps(f)
 	})
 
-	ginkgo.It("limiter-1: test envoyfilters", func() {
+	// all actions
+	ginkgo.It("all", func() {
+		_, err := f.CreateNamespace(nsSlime, nil)
+		framework.ExpectNoError(err)
+		_, err = f.CreateNamespace(nsApps, map[string]string{istioRevKey: substituteValue("istioRevValue", istioRevValue)})
+		framework.ExpectNoError(err)
+		createSlimeBoot(f)
+		createSlimeModuleLimiter(f)
+		createExampleApps(f)
 		createSmartLimiter(f)
 	})
 
-	ginkgo.It("limiter-1-1: test if the rate limiter take effect", func() {
+	//  just apply a smartlimiter
+	ginkgo.It("create smartlimiter and envoyfilters", func() {
+		createSmartLimiter(f)
+	})
+
+	// apply a smartlimiter and check whether the limiter take effect
+	ginkgo.It("verify limiter", func() {
+		createSmartLimiter(f)
 		limiterTackEffect(f)
 	})
 
 })
 
-
 func createSlimeBoot(f *framework.Framework) {
 
-	//crdYaml := readFile(test, "init/crds.yaml")
-	//framework.RunKubectlOrDieInput("", crdYaml, "create", "-f", "-")
-	//defer func() {
-	//	testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: "", Contents: crdYaml})
-	//}()
-
+	crdYaml := readFile(test, "init/crds.yaml")
+	framework.RunKubectlOrDieInput("", crdYaml, "create", "-f", "-")
+	defer func() {
+		testResourceToDelete = append(testResourceToDelete, &TestResource{Namespace: "", Contents: crdYaml})
+	}()
 	cs := f.ClientSet
 	deploySlimeBootYaml := readFile(test, "init/deployment_slime-boot.yaml")
 	deploySlimeBootYaml = strings.ReplaceAll(deploySlimeBootYaml, "{{slimebootTag}}", substituteValue("slimeBootTag", slimebootTag))
@@ -187,34 +200,34 @@ func createSmartLimiter(f *framework.Framework) {
 // curl -I http://productpage:9080/productpage
 // curl -I http://reviews:9080/
 func limiterTackEffect(f *framework.Framework) {
-	time.Sleep(5*time.Second)
-	pods,err := f.ClientSet.CoreV1().Pods(nsApps).List(metav1.ListOptions{})
+	time.Sleep(20 * time.Second)
+	pods, err := f.ClientSet.CoreV1().Pods(nsApps).List(metav1.ListOptions{})
 	framework.ExpectNoError(err)
-	for _,pod := range pods.Items {
+	for _, pod := range pods.Items {
 		if strings.Contains(pod.Name, "ratings") {
-			for i:=1;i<=10;i++ {
-				output,_,err := f.ExecCommandInContainerWithFullOutput(pod.Name,"ratings",nsApps,"curl", "-I","http://productpage:9080/productpage")
+			for i := 1; i <= 10; i++ {
+				output, _, err := f.ExecCommandInContainerWithFullOutput(pod.Name, "ratings", nsApps, "curl", "-I", "http://productpage:9080/productpage")
 				framework.ExpectNoError(err)
-				if i<5 {
-					if !strings.Contains(output,"200") {
+				if i < 5 {
+					if !strings.Contains(output, "200") {
 						framework.Failf("servers productpage not found\n")
 					}
-				}else if !strings.Contains(output,"429") {
+				} else if !strings.Contains(output, "429") {
 					framework.Failf("the smartLimiter action 4/min not take effect .\n")
 				}
-				time.Sleep(2*time.Second)
+				time.Sleep(2 * time.Second)
 			}
 		}
 	}
 	ginkgo.By("smartLimiter action 4/min take effect")
 }
 
-//func deleteTestResource() {
-//	for i := len(testResourceToDelete) - 1; i >= 0; i-- {
-//		cleanupKubectlInputs(testResourceToDelete[i].Namespace, testResourceToDelete[i].Contents)
-//		time.Sleep(500 * time.Millisecond)
-//	}
-//}
+func deleteTestResource() {
+	for i := len(testResourceToDelete) - 1; i >= 0; i-- {
+		cleanupKubectlInputs(testResourceToDelete[i].Namespace, testResourceToDelete[i].Contents)
+		time.Sleep(500 * time.Millisecond)
+	}
+}
 
 func substituteValue(value, defaultValue string) string {
 	if os.Getenv(value) != "" {
