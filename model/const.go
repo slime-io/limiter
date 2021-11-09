@@ -1,7 +1,7 @@
 package model
 
 const (
-	ConfigMapName = "rate-limit-config"
+	ConfigMapName = "slime-rate-limit-config"
 
 	ConfigMapNamespace = "istio-system"
 
