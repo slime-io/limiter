@@ -148,11 +148,9 @@ func generateLocalRateLimitPerFilterPatch(descriptors []*microservicev1alpha1.Sm
 // 有match时，只有当header中的值与match相匹配才会进行对路由进行action限流，需要注意的是RegexMatch(name 的值是否匹配正则)与
 // PresentMatch(name是否存在)互斥
 // 这里之前打算在pb声明为oneof,但是用kubebuilder生成api的过程中无法识别相关interface{}
-// 没有match的时是一般的限流策略
 */
 func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) *envoy_config_route_v3.RateLimit_Action {
 	action := &envoy_config_route_v3.RateLimit_Action{}
-
 	if descriptor.CustomKey != "" && descriptor.CustomValue != "" {
 		log.Infof("customKey/customValue is not empty, users should apply a envoyplugin with same customKey/customValue")
 		return nil
@@ -166,36 +164,15 @@ func generateRouteRateLimitAction(descriptor *microservicev1alpha1.SmartLimitDes
 		headers := make([]*envoy_config_route_v3.HeaderMatcher, 0)
 		for _, match := range descriptor.Match {
 			header := &envoy_config_route_v3.HeaderMatcher{}
+			header.Name = match.Name
+			header.InvertMatch = generateInvertMatch(match)
 			switch {
 			case match.RegexMatch != "" :
-				header.Name = match.Name
 				header.HeaderMatchSpecifier = generateSafeRegexMatch(match)
 			case match.PresentMatch != "" :
-				present := false
-				if match.PresentMatch == "true" {
-					present = true
-				}
-				header.Name = match.Name
-				header.HeaderMatchSpecifier = &envoy_config_route_v3.HeaderMatcher_PresentMatch{
-					PresentMatch: present,
-				}
+				header.HeaderMatchSpecifier = generatePresentMatch(match)
 			}
 			headers = append(headers, header)
-			
-			//if match.RegexMatch != "" {
-			//	header.Name = match.Name
-			//	header.HeaderMatchSpecifier = generateSafeRegexMatch(match)
-			//} else {
-			//	present := false
-			//	if match.PresentMatch == "true" {
-			//		present = true
-			//	}
-			//	header.Name = match.Name
-			//	header.HeaderMatchSpecifier = &envoy_config_route_v3.HeaderMatcher_PresentMatch{
-			//		PresentMatch: present,
-			//	}
-			//}
-
 		}
 		action.ActionSpecifier = &envoy_config_route_v3.RateLimit_Action_HeaderValueMatch_{
 			HeaderValueMatch: &envoy_config_route_v3.RateLimit_Action_HeaderValueMatch{
@@ -271,6 +248,23 @@ func generateSafeRegexMatch(match *microservicev1alpha1.SmartLimitDescriptor_Hea
 		},
 	}
 }
+
+func generateInvertMatch(match *microservicev1alpha1.SmartLimitDescriptor_HeaderMatcher) bool {
+	if match.InvertMatch == "true" {
+		return true
+	}
+	return false
+}
+
+func generatePresentMatch(match *microservicev1alpha1.SmartLimitDescriptor_HeaderMatcher) *envoy_config_route_v3.HeaderMatcher_PresentMatch {
+
+	present := false
+	if match.PresentMatch == "true" {
+		present = true
+	}
+	return &envoy_config_route_v3.HeaderMatcher_PresentMatch{PresentMatch: present}
+}
+
 
 // TODO
 func generateCustomTokenBucket(maxTokens, tokensPerFill, second int) *envoy_type_v3.TokenBucket {
