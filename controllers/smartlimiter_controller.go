@@ -18,28 +18,24 @@ package controllers
 
 import (
 	"context"
-	"reflect"
-	"sync"
-
-	log "github.com/sirupsen/logrus"
-	"slime.io/slime/slime-framework/apis/config/v1alpha1"
-
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/client-go/kubernetes"
-
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"slime.io/slime/modules/limiter/controllers/multicluster"
-	"slime.io/slime/slime-framework/model/source/aggregate"
-	"slime.io/slime/slime-framework/model/source/k8s"
-
 	cmap "github.com/orcaman/concurrent-map"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
+	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"slime.io/slime/framework/apis/config/v1alpha1"
+	"slime.io/slime/framework/bootstrap"
+	event_source "slime.io/slime/framework/model/source"
+	"slime.io/slime/framework/model/source/aggregate"
+	"slime.io/slime/framework/model/source/k8s"
 	microserviceslimeiov1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
-	"slime.io/slime/slime-framework/bootstrap"
-	event_source "slime.io/slime/slime-framework/model/source"
+	"slime.io/slime/modules/limiter/controllers/multicluster"
+	"slime.io/slime/modules/limiter/model"
+	"sync"
 )
 
 // SmartLimiterReconciler reconciles a SmartLimiter object
@@ -60,6 +56,8 @@ type SmartLimiterReconciler struct {
 
 	lastUpdatePolicy     microserviceslimeiov1alpha1.SmartLimiterSpec
 	lastUpdatePolicyLock *sync.RWMutex
+
+	//globalRateLimitInfo cmap.ConcurrentMap
 }
 
 // +kubebuilder:rbac:groups=microservice.slime.io,resources=smartlimiters,verbs=get;list;watch;create;update;patch;delete
@@ -67,8 +65,6 @@ type SmartLimiterReconciler struct {
 
 func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	_ = context.Background()
-
-	// your logic here
 
 	instance := &microserviceslimeiov1alpha1.SmartLimiter{}
 	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
@@ -86,7 +82,14 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.lastUpdatePolicyLock.Lock()
 		r.lastUpdatePolicy = microserviceslimeiov1alpha1.SmartLimiterSpec{}
 		r.lastUpdatePolicyLock.Unlock()
-		return reconcile.Result{}, nil
+		//if contain global smart limiter, should delete info in configmap
+		refreshConfigMap([]*model.Descriptor{}, r, req.NamespacedName)
+		return reconcile.Result{}, err
+	}
+
+	if len(instance.Spec.Sets) == 0 {
+		log.Infof("sets is nil,continue")
+		return reconcile.Result{},nil
 	}
 
 	// 资源更新
@@ -134,6 +137,7 @@ func NewReconciler(cfg *v1alpha1.Limiter, mgr ctrl.Manager, env *bootstrap.Envir
 		source:               src,
 		env:                  env,
 		lastUpdatePolicyLock: &sync.RWMutex{},
+		//globalRateLimitInfo: cmap.New(),
 	}
 	r.source.Start(env.Stop)
 	r.WatchSource(env.Stop)

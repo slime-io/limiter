@@ -2,30 +2,29 @@ package module
 
 import (
 	"os"
+	"slime.io/slime/framework/model/module"
+	"slime.io/slime/modules/limiter/model"
 
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	istioapi "slime.io/slime/framework/apis"
+	"slime.io/slime/framework/apis/config/v1alpha1"
+	"slime.io/slime/framework/bootstrap"
+	istiocontroller "slime.io/slime/framework/controllers"
+	"slime.io/slime/framework/util"
 	limiterapiv1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
 	"slime.io/slime/modules/limiter/controllers"
-	istioapi "slime.io/slime/slime-framework/apis"
-	"slime.io/slime/slime-framework/apis/config/v1alpha1"
-	"slime.io/slime/slime-framework/bootstrap"
-	istiocontroller "slime.io/slime/slime-framework/controllers"
-	"slime.io/slime/slime-framework/model"
-	"slime.io/slime/slime-framework/util"
 )
-
-const Name = "limiter"
 
 type Module struct {
 	config v1alpha1.Limiter
 }
 
 func (m *Module) Name() string {
-	return Name
+	return model.ModuleName
 }
 
 func (m *Module) Config() proto.Message {
@@ -45,7 +44,7 @@ func (m *Module) InitScheme(scheme *runtime.Scheme) error {
 	return nil
 }
 
-func (m *Module) InitManager(mgr manager.Manager, env bootstrap.Environment, cbs model.ModuleInitCallbacks) error {
+func (m *Module) InitManager(mgr manager.Manager, env bootstrap.Environment, cbs module.InitCallbacks) error {
 	cfg := &m.config
 	if env.Config != nil && env.Config.Limiter != nil {
 		cfg = env.Config.Limiter

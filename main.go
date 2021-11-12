@@ -17,10 +17,11 @@ limitations under the License.
 package main
 
 import (
-	"slime.io/slime/modules/limiter/module"
-	"slime.io/slime/slime-framework/model"
+	"slime.io/slime/framework/model/module"
+	"slime.io/slime/modules/limiter/model"
+	modmodule "slime.io/slime/modules/limiter/module"
 )
 
 func main() {
-	model.Main(module.Name, []model.Module{&module.Module{}})
+	module.Main(model.ModuleName, []module.Module{&modmodule.Module{}})
 }
