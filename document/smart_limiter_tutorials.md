@@ -316,6 +316,9 @@ $latest_tag equals the latest tag. The shell scripts and yaml files uses this ve
 
 ```sh
 $ export latest_tag=$(curl -s https://api.github.com/repos/slime-io/slime/tags | grep 'name' | cut -d\" -f4 | head -1)
+
+export limiter_latest_tag=$(curl -s https://api.github.com/repos/slime-io/limiter/tags | grep 'name' | cut -d\" -f4 | head -1)
+
 ```
 
 
@@ -364,7 +367,7 @@ $ kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/$latest_tag
 ##### Create Smartlimiter
 
 ```sh
-$ kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/$latest_tag/install/samples/smartlimiter/smartlimiter_reviews.yaml"
+$ kubectl apply -f "https://raw.githubusercontent.com/slime-io/limiter/$limiter_latest_tag/install/samples/smartlimiter/smartlimiter_reviews.yaml"
 ```
 
 
@@ -509,7 +512,7 @@ $ kubectl delete -f "https://raw.githubusercontent.com/slime-io/slime/$latest_ta
 Uninstall slime.
 
 ```sh
-$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/slime/$latest_tag/install/samples/smartlimiter/easy_uninstall_limiter.sh)"
+$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/limiter/$limiter_latest_tag/install/samples/smartlimiter/easy_uninstall_limiter.sh)"
 ```
 
 
@@ -519,20 +522,21 @@ $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/slime/$l
 If you want to use customize shell scripts or yaml files, please set $custom_tag_or_commit. 
 
 ```sh
-$ export custom_tag_or_commit=xxx
+$ export custom_slime_tag_or_commit=xxx
+$ export custom_limiter_tag_or_commit=xxx
 ```
 
 If command includes a yaml file,  please use $custom_tag_or_commit instead of $latest_tag.
 
 ```sh
 #$ kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/$latest_tag/install/config/bookinfo.yaml"
-$ kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/$custom_tag_or_commit/install/config/bookinfo.yaml"
+$ kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/$custom_slime_tag_or_commit/install/config/bookinfo.yaml"
 ```
 
 If command includes a shell script,  please add $custom_tag_or_commit as a parameter to the shell script.
 
 ```sh
-#$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/slime/$latest_tag/install/samples/smartlimiter/easy_install_limiter.sh)"
-$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/slime/$latest_tag/install/samples/smartlimiter/easy_install_limiter.sh)" $custom_tag_or_commit
+#$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/limiter/$limiter_latest_tag/install/samples/smartlimiter/easy_install_limiter.sh)"
+$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/limiter/$limiter_latest_tag/install/samples/smartlimiter/easy_install_limiter.sh)" $custom_slime_tag_or_commit $custom_limiter_tag_or_commit
 ```
 
