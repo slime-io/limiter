@@ -11,8 +11,8 @@
     - [为reviews设置限流规则](#为reviews设置限流规则)
     - [确认smartlimiter已经创建](#确认smartlimiter已经创建)
     - [确认EnvoyFilter已创建](#确认envoyfilter已创建)
-    - [访问观察](#访问观察)
-    - [卸载](#卸载)
+    - [**访问观察**](#访问观察)
+    - [**卸载**](#卸载)
     - [补充说明](#补充说明)
 
 
@@ -58,7 +58,7 @@ spec:
       name: limiter
 ```
 
-[完整样例](../../install/samples/smartlimiter/slimeboot_smartlimiter.yaml)
+[完整样例](../install/samples/smartlimiter/slimeboot_smartlimiter.yaml)
 
 在示例中，我们配置了prometheus作为监控源，prometheus.handlers定义了希望从监控中获取的监控指标，这些监控指标可以作为治理规则中的参数，从而达到自适应限流的目的。
 用户也可以根据需要定义limiter模块需要获取的监控指标，以下是一些可以常用的监控指标获取语句：
@@ -323,6 +323,8 @@ $latest_tag获取最新tag。默认执行的shell脚本和yaml文件均是$lates
 
 ```sh
 $ export latest_tag=$(curl -s https://api.github.com/repos/slime-io/slime/tags | grep 'name' | cut -d\" -f4 | head -1)
+
+$ export limiter_latest_tag=$(curl -s https://api.github.com/repos/slime-io/limiter/tags | grep 'name' | cut -d\" -f4 | head -1)
 ```
 
 
@@ -330,7 +332,7 @@ $ export latest_tag=$(curl -s https://api.github.com/repos/slime-io/slime/tags |
 ##### 安装 slime 
 
 ```shell
-$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/slime/$latest_tag/install/samples/smartlimiter/easy_install_limiter.sh)"
+$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/limiter/$limiter_latest_tag/install/samples/smartlimiter/easy_install_limiter.sh)"
 ```
 
 确认所有组件已正常运行
@@ -519,7 +521,7 @@ $ kubectl delete -f "https://raw.githubusercontent.com/slime-io/slime/$latest_ta
 卸载slime相关
 
 ```sh
-$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/slime/$latest_tag/install/samples/smartlimiter/easy_uninstall_limiter.sh)"
+$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/limiter/$limiter_latest_tag/install/samples/smartlimiter/easy_uninstall_limiter.sh)"
 ```
 
 
@@ -529,20 +531,21 @@ $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/slime/$l
 如想要使用其他tag或commit_id的shell脚本和yaml文件，请显示指定$custom_tag_or_commit。
 
 ```sh
-$ export custom_tag_or_commit=xxx
+$ export custom_slime_tag_or_commit=xxx
+$ export custom_limiter_tag_or_commit=xxx
 ```
 
 执行的命令涉及到yaml文件，用$custom_tag_or_commit替换$latest_tag，如下
 
 ```sh
 #$ kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/$latest_tag/install/config/bookinfo.yaml"
-$ kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/$custom_tag_or_commit/install/config/bookinfo.yaml"
+$ kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/$custom_slime_tag_or_commit/install/config/bookinfo.yaml"
 ```
 
 执行的命令涉及到shell文件，将$custom_tag_or_commit作为shell文件的参数，如下
 
 ```sh
-#$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/slime/$latest_tag/install/samples/smartlimiter/easy_install_limiter.sh)"
-$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/slime/$latest_tag/install/samples/smartlimiter/easy_install_limiter.sh)" $custom_tag_or_commit
+#$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/limiter/$limiter_latest_tag/install/samples/smartlimiter/easy_install_limiter.sh)"
+$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/slime-io/limiter/$limiter_latest_tag/install/samples/smartlimiter/easy_install_limiter.sh)" $custom_slime_tag_or_commit $custom_limiter_tag_or_commit
 ```
 

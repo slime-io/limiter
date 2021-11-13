@@ -9,6 +9,8 @@
 - [E2E testing](#e2e-testing)
 ## Adaptive rate limiting overview
 
+[中文](./README_ZH.md)
+
 ## Features
 
 1. Easy to use, just submit `SmartLimiter` resources to achieve the purpose of service rate limiting.
