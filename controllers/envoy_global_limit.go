@@ -8,7 +8,7 @@ import (
 	networking "istio.io/api/networking/v1alpha3"
 	"k8s.io/apimachinery/pkg/types"
 	"slime.io/slime/framework/util"
-	microservicev1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
+	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
 	"slime.io/slime/modules/limiter/model"
 	"strconv"
 )
@@ -99,7 +99,7 @@ func generateEnvoyHttpFilterRateLimitServicePatch(rs *structpb.Struct) *networki
 	}
 }
 
-func generateGlobalRateLimitDescriptor(descriptors []*microservicev1alpha1.SmartLimitDescriptor, loc types.NamespacedName) []*model.Descriptor {
+func generateGlobalRateLimitDescriptor(descriptors []*microservicev1alpha2.SmartLimitDescriptor, loc types.NamespacedName) []*model.Descriptor {
 	desc := make([]*model.Descriptor, 0)
 	for _, descriptor := range descriptors {
 		quota, unit, err := calculateQuotaPerUnit(descriptor)
@@ -125,7 +125,7 @@ func generateGlobalRateLimitDescriptor(descriptors []*microservicev1alpha1.Smart
 }
 
 // https://github.com/envoyproxy/ratelimit only support per second, minute, hour, and day limits
-func calculateQuotaPerUnit(descriptor *microservicev1alpha1.SmartLimitDescriptor) (quota int, unit string, err error) {
+func calculateQuotaPerUnit(descriptor *microservicev1alpha2.SmartLimitDescriptor) (quota int, unit string, err error) {
 	quota, err = strconv.Atoi(descriptor.Action.Quota)
 	if err != nil {
 		return quota, unit, err

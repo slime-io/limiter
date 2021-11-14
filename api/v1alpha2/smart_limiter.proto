@@ -4,11 +4,11 @@
 */
 
 syntax = "proto3";
-package slime.microservice.v1alpha1;
+package slime.microservice.v1alpha2;
 
-option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha1";
+option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha2";
 
-//apiVersion: microservice.slime.io/v1alpha1
+//apiVersion: microservice.slime.io/v1alpha2
 //kind: SmartLimiter
 //metadata:
 //  name: b
@@ -21,14 +21,11 @@ option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha1";
 //          fill_interval:
 //            seconds: 60
 //          quota: "60/{{._base.pod}}"
-//          strategy: average
+//          strategy: "average"
 //          //rate_limit_service: "outbound|18081||rate-limit.istio-system.svc.cluster.local"
 //        conditon: "true"
 //        target:
-//          //direction: inbound  #default
 //          port: 9080
-//          //route: default
-//          #host: "b.powerful.svc.cluster.local"
 
 
 message SmartLimiterSpec {
@@ -39,52 +36,35 @@ message SmartLimiterSpec {
 message SmartLimiterStatus {
     map<string, SmartLimitDescriptors> ratelimitStatus = 1;
     map<string, string> metricStatus = 2;
-    message ServiceStatus {
-        // Deprecated
-        map<string, string> selector = 1;
-        message Listener {
-            // Deprecated
-            string name = 1;
-            // Deprecated
-            uint32 port = 2;
-        }
-        // Deprecated
-        repeated Listener listener = 2;
-    }
-    // Deprecated
-    ServiceStatus serviceStatus = 3;
 }
 
 message SmartLimitDescriptor {
     message HeaderMatcher {
         string name = 1;
-
-        // If specified, header match will be performed based on the value of the header.
-        // This field is deprecated. Please use :ref:`string_match <envoy_v3_api_field_config.route.v3.HeaderMatcher.string_match>`.
-        string exact_match = 2;
-
         // If specified, this regex string is a regular expression rule which implies the entire request
         // header value must match the regex. The rule will not match if only a subsequence of the
         // request header value matches the regex.
-        // This field is deprecated. Please use :ref:`string_match <envoy_v3_api_field_config.route.v3.HeaderMatcher.string_match>`.
-        string regex_match = 3;
+        string regex_match = 2;
+
+        // If specified, header match will be performed based on the value of the header.
+        string exact_match = 3;
+
+        // * The prefix *abcd* matches the value *abcdxyz*, but not for *abcxyz*.
+        string prefix_match = 4;
+
+        // * The suffix *abcd* matches the value *xyzabcd*, but not for *xyzbcd*.
+        string suffix_match = 5;
 
         // If specified as true, header match will be performed based on whether the header is in the
         // request. If specified as false, header match will be performed based on whether the header is absent.
-        string present_match = 4;
-
-        // * The prefix *abcd* matches the value *abcdxyz*, but not for *abcxyz*.
-        string prefix_match = 5;
-
-        // * The suffix *abcd* matches the value *xyzabcd*, but not for *xyzbcd*.
-        string suffix_match = 6;
+        bool present_match = 6;
 
         // If specified, the match result will be inverted before checking. Defaults to false.
-        //
-        // Examples:
-        //
         // * The regex ``\d{3}`` does not match the value *1234*, so it will match when inverted.
-        string invert_match = 7;
+        bool invert_match = 7;
+
+        // if specified, the exact match the value ""
+        bool is_exact_match_empty = 8;
     }
 
     message Action {
