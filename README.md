@@ -44,26 +44,4 @@ spec:
 
 自适应限流的主体架构分为两个部分，一部分包括`SmartLimiter`到`EnvoyFilter`的逻辑转化，另一部分包括集群内监控数据的获取，包括服务的`CPU`, `Memory`,`POD`数量等数据。
 
-![](.\media\SmartLimiter.png)
-
-`SmartLimiter`的`CRD`定义的比较接近自然语义，例如，希望当`reviews`服务的`v1`版本的服务消耗`cpu`总量大于10的时候，触发限流，让其每个`POD`的9080端口的服务每秒钟只能处理10次请求。
-
-~~~yaml
-apiVersion: microservice.slime.io/v1alpha1
-kind: SmartLimiter
-metadata:
-  name: productpage
-  namespace: default
-spec:
-  sets:
-    v1:
-      descriptor:
-      - action:
-          fill_interval:
-            seconds: 1
-          quota: "10"
-          strategy: "single"
-        condition: "{{.v1.cpu.sum}}>10"
-        target:
-          port: 9080
-~~~
+<img src="./media/SmartLimiter.png" style="zoom:80%;" />
