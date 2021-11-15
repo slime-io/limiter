@@ -61,6 +61,7 @@ func (m *Module) InitManager(mgr manager.Manager, env bootstrap.Environment, cbs
 	if err := (&istiocontroller.DestinationRuleReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Env: &env,
 	}).SetupWithManager(mgr); err != nil {
 		log.Errorf("unable to create controller DestinationRule, %+v", err)
 		os.Exit(1)
