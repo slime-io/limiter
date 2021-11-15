@@ -14,6 +14,7 @@ option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha2";
 //  name: b
 //  namespace: powerful
 //spec:
+//  rls: ""
 //  sets:
 //    _base:
 //      descriptors:
@@ -30,7 +31,9 @@ option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha2";
 
 message SmartLimiterSpec {
     // subset rate-limit,the key is subset name.
-    map<string, SmartLimitDescriptors> sets = 2;
+    map<string, SmartLimitDescriptors> sets = 1;
+    // rls service
+    string rls = 2; // rls 服务地址
 }
 
 message SmartLimiterStatus {
@@ -71,7 +74,6 @@ message SmartLimitDescriptor {
         string quota = 1;  // 配额
         Duration fill_interval = 2; // 时间
         string strategy= 3; // 策略
-        string rate_limit_service=4; // 全局限流
     }
 
     message Target {
@@ -96,7 +98,7 @@ message SmartLimitDescriptor {
 
 message SmartLimitDescriptors {
     // Description of current rate-limit
-    repeated SmartLimitDescriptor descriptor = 4;
+    repeated SmartLimitDescriptor descriptor = 1;
 }
 
 message Duration {

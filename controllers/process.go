@@ -27,7 +27,6 @@ import (
 )
 
 func (r *SmartLimiterReconciler) WatchSource(stop <-chan struct{}) {
-	//t := time.NewTicker(time.Second * 30)
 	go func() {
 		for {
 			select {
@@ -37,14 +36,9 @@ func (r *SmartLimiterReconciler) WatchSource(stop <-chan struct{}) {
 				switch e.EventType {
 				case event_source.Update, event_source.Add:
 					if _, err := r.Refresh(reconcile.Request{NamespacedName: e.Loc}, e.Info); err != nil {
-						log.Errorf("error:%v", err)
+						log.Errorf("error: %+v", err)
 					}
 				}
-			//case <- t.C:
-			//	found := &v1alpha3.EnvoyFilterList{}
-			//	if err := r.Client.List(context.TODO(),found,nil); err != nil {
-			//
-			//	}
 			}
 		}
 	}()
@@ -77,9 +71,10 @@ func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[str
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
 			return reconcile.Result{}, nil
+		} else {
+			// Error reading the object - requeue the request.
+			return reconcile.Result{}, err
 		}
-		// Error reading the object - requeue the request.
-		return reconcile.Result{}, err
 	}
 	if result, err := r.refresh(instance); err == nil {
 		return result, nil
@@ -105,7 +100,7 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLim
 	var descriptor map[string]*microservicev1alpha2.SmartLimitDescriptors
 	var gdesc []*model.Descriptor
 
-	efs, descriptor, gdesc,err = r.GenerateEnvoyConfigs(spec, material, instance)
+	efs, descriptor, gdesc,err = r.GenerateEnvoyConfigs(spec, material, loc)
 	if err != nil {
 		return reconcile.Result{},err
 	}

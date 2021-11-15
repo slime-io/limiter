@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 
 export MOD=limiter
-../../bin/publish.sh "$@"
+../slime/bin/publish.sh "$@"

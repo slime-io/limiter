@@ -87,11 +87,6 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		return reconcile.Result{}, err
 	}
 
-	if len(instance.Spec.Sets) == 0 {
-		log.Infof("sets is nil,continue")
-		return reconcile.Result{},nil
-	}
-
 	// 资源更新
 	r.lastUpdatePolicyLock.RLock()
 	if reflect.DeepEqual(instance.Spec, r.lastUpdatePolicy) {

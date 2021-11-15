@@ -14,15 +14,18 @@ import (
 )
 
 func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.SmartLimiterSpec,
-	material map[string]string, instance *microservicev1alpha2.SmartLimiter) (
+	material map[string]string, loc types.NamespacedName) (
 	map[string]*networking.EnvoyFilter, map[string]*microservicev1alpha2.SmartLimitDescriptors, []*model.Descriptor,error) {
 
 	materialInterface := util.MapToMapInterface(material)
-	globalDescriptors := make([]*model.Descriptor, 0)
 	setsEnvoyFilter := make(map[string]*networking.EnvoyFilter)
 	setsSmartLimitDescriptor := make(map[string]*microservicev1alpha2.SmartLimitDescriptors)
-	host := util.UnityHost(instance.Name, instance.Namespace)
+	// global descriptors
+	globalDescriptors := make([]*model.Descriptor, 0)
+	host := util.UnityHost(loc.Name, loc.Namespace)
+	rls := spec.Rls
 
+	// get destinationrule subset of the host
 	var sets []*networking.Subset
 	if controllers.HostSubsetMapping.Get(host) != nil {
 		sets = controllers.HostSubsetMapping.Get(host).([]*networking.Subset)
@@ -31,7 +34,6 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 	}
 	sets = append(sets, &networking.Subset{Name: util.Wellkonw_BaseSet})
 
-	loc := types.NamespacedName{Namespace: instance.Namespace, Name: instance.Name}
 	svc := &v1.Service{}
 	if err := r.Client.Get(context.TODO(), loc, svc); err != nil {
 		if errors.IsNotFound(err) {
@@ -44,17 +46,26 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 	svcSelector := svc.Spec.Selector
 
 	for _, set := range sets {
-		if setDescriptor, ok := spec.Sets[set.Name]; ok {
-
+		if setDescriptor, ok := spec.Sets[set.Name]; !ok {
+			// sets is specified in the descriptor, but not found in the Destinationrule set
+			// the set must be deleted in the DestinationRule set
+			setsEnvoyFilter[set.Name] = nil
+		} else {
 			validDescriptor := &microservicev1alpha2.SmartLimitDescriptors{}
 			for _, des := range setDescriptor.Descriptor_ {
-				shouldUpdate, err := util.CalculateTemplateBool(des.Condition, materialInterface)
-				if err != nil {
+				// update the EnvoyFilter when condition value is true after calculate
+				if shouldUpdate, err := util.CalculateTemplateBool(des.Condition, materialInterface); err != nil {
 					log.Errorf("calaulate %s condition err, %+v",des.Condition,err.Error())
-				}
-				if shouldUpdate {
+					continue
+				} else if !shouldUpdate {
+					log.Infof("the value of condition %s is false", des.Condition)
+				} else {
+					// update
 					if des.Action != nil {
-						if rateLimitValue, err := util.CalculateTemplate(des.Action.Quota, materialInterface); err == nil {
+						if rateLimitValue, err := util.CalculateTemplate(des.Action.Quota, materialInterface); err != nil {
+							log.Errorf("calculate quota %s err, %+v",des.Action.Quota,err.Error())
+						} else {
+							log.Infof("after calculate, the quota %s is %d",des.Action.Quota,rateLimitValue)
 							validDescriptor.Descriptor_ = append(validDescriptor.Descriptor_, &microservicev1alpha2.SmartLimitDescriptor{
 								Action: &microservicev1alpha2.SmartLimitDescriptor_Action{
 									Quota:        fmt.Sprintf("%d", rateLimitValue),
@@ -68,30 +79,29 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 					}
 				}
 			}
-			selector := util.CopyMap(svcSelector)
-			for k, v := range set.Labels {
-				selector[k] = v
-			}
-			if len(validDescriptor.Descriptor_) > 0 {
-				ef := descriptorsToEnvoyFilter(validDescriptor.Descriptor_, selector, loc)
+
+			if len(validDescriptor.Descriptor_) == 0 {
+				log.Infof("not matchd descriptor in %s",set.Name)
+				setsEnvoyFilter[set.Name] = nil
+			} else {
+				// prepare to generate ef according the descriptor in validDescriptor
+				selector := util.CopyMap(svcSelector)
+				for k, v := range set.Labels {
+					selector[k] = v
+				}
+				ef := descriptorsToEnvoyFilter(validDescriptor.Descriptor_, selector, loc,rls)
 				setsEnvoyFilter[set.Name] = ef
 				setsSmartLimitDescriptor[set.Name] = validDescriptor
 
 				desc := descriptorsToGlobalRateLimit(validDescriptor.Descriptor_, loc)
 				globalDescriptors = append(globalDescriptors, desc...)
-			} else {
-				// Used to delete
-				setsEnvoyFilter[set.Name] = nil
 			}
-		} else {
-			// Used to delete
-			setsEnvoyFilter[set.Name] = nil
 		}
 	}
 	return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors,nil
 }
 
-func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha2.SmartLimitDescriptor, labels map[string]string, loc types.NamespacedName) *networking.EnvoyFilter {
+func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha2.SmartLimitDescriptor, labels map[string]string, loc types.NamespacedName, rls string) *networking.EnvoyFilter {
 
 	ef := &networking.EnvoyFilter{
 		WorkloadSelector: &networking.WorkloadSelector{
@@ -124,14 +134,7 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha2.SmartLimitDesc
 
 	// config plugin envoy.filters.http.ratelimit
 	if len(globalDescriptors) > 0 {
-		var rlServer string
-		for _, item := range globalDescriptors {
-			if item.Action.RateLimitService != "" {
-				rlServer = item.Action.RateLimitService
-				break
-			}
-		}
-		server := getRateLimiterServerCluster(rlServer)
+		server := getRateLimiterServerCluster(rls)
 		httpFilterEnvoyRateLimitPatch := generateEnvoyHttpFilterGlobalRateLimitPatch(server)
 		if httpFilterEnvoyRateLimitPatch != nil {
 			ef.ConfigPatches = append(ef.ConfigPatches, httpFilterEnvoyRateLimitPatch)
