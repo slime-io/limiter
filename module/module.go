@@ -2,7 +2,6 @@ package module
 
 import (
 	"os"
-
 	"slime.io/slime/framework/model/module"
 	"slime.io/slime/modules/limiter/model"
 
@@ -16,7 +15,7 @@ import (
 	"slime.io/slime/framework/bootstrap"
 	istiocontroller "slime.io/slime/framework/controllers"
 	"slime.io/slime/framework/util"
-	limiterapiv1alpha1 "slime.io/slime/modules/limiter/api/v1alpha1"
+	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
 	"slime.io/slime/modules/limiter/controllers"
 )
 
@@ -35,7 +34,7 @@ func (m *Module) Config() proto.Message {
 func (m *Module) InitScheme(scheme *runtime.Scheme) error {
 	for _, f := range []func(*runtime.Scheme) error{
 		clientgoscheme.AddToScheme,
-		limiterapiv1alpha1.AddToScheme,
+		microservicev1alpha2.AddToScheme,
 		istioapi.AddToScheme,
 	} {
 		if err := f(scheme); err != nil {
@@ -60,9 +59,9 @@ func (m *Module) InitManager(mgr manager.Manager, env bootstrap.Environment, cbs
 
 	// add dr reconcile
 	if err := (&istiocontroller.DestinationRuleReconciler{
-		Env:    &env,
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Env: &env,
 	}).SetupWithManager(mgr); err != nil {
 		log.Errorf("unable to create controller DestinationRule, %+v", err)
 		os.Exit(1)
