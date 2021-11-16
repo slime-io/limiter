@@ -213,6 +213,7 @@ func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLim
 	// TODO: 判断是否需要更新
 	// Update
 	if !reflect.DeepEqual(found.Spec, obj.Spec) {
+
 		log.Infof("Update a new EnvoyFilter,%s:%s", namespace, name)
 		obj.ResourceVersion = found.ResourceVersion
 		err = r.Client.Update(context.TODO(), obj)

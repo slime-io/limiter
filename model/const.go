@@ -11,7 +11,7 @@ const (
 
 	HeaderValueMatch = "header_value_match"
 
-	Domain = "default"
+	Domain = "slime"
 
 	Inbound = "inbound"
 

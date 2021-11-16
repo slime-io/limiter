@@ -65,7 +65,7 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 						if rateLimitValue, err := util.CalculateTemplate(des.Action.Quota, materialInterface); err != nil {
 							log.Errorf("calculate quota %s err, %+v",des.Action.Quota,err.Error())
 						} else {
-							log.Infof("after calculate, the quota %s is %d",des.Action.Quota,rateLimitValue)
+							//log.Infof("after calculate, the quota %s is %d",des.Action.Quota,rateLimitValue)
 							validDescriptor.Descriptor_ = append(validDescriptor.Descriptor_, &microservicev1alpha2.SmartLimitDescriptor{
 								Action: &microservicev1alpha2.SmartLimitDescriptor_Action{
 									Quota:        fmt.Sprintf("%d", rateLimitValue),
