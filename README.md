@@ -1,34 +1,54 @@
-# 自适应限流概述
+- [Overview](#overview)
+  - [Background](#background)
+  - [Features](#features)
+  - [Function](#function)
+  - [Thinking](#thinking)
+  - [Architecture](#architecture)
+  - [Sample](#sample)
+  - [Dependencies](#dependencies)
+# Overview
 
-## 特点
+[中文](./README_ZH.md)
 
-1. 方便使用，只需提交`SmartLimiter`资源即可达到服务限流的目的。
-2. 自适应限流，根据`pod`的资源使用量动态的触发限流规则。
-3. 覆盖场景多，支持全局共享限流，全局均分限流，单机限流。
+## Background
 
-## 背景
+In Service Mesh, in order to configure rate limit for a service, users have to face an unusually complex `EnvoyFilter` rate limit configuration. To solve this problem, this project introduces `SmartLimiter`, which can automatically convert user-submitted `SmartLimiter` into `EnvoyFilter`. [Installation and Use](./document/smartlimiter.md#installation-and-usage)
 
-一方面，随着`Mixer`的移除，用户不得不面对异常复杂的`EnvoyFilter`配置，另一方面固定的限流策略不够灵活，如用户只想在服务的`CPU`使用量达到某个值后才开启限流。为了解决这两个痛点，我们推出了自适应限流组件`slime/limiter`。用户只需要提交符合我们定义的`SmartLimiter`，即可完成灵活的服务限流要求。
+## Features
 
-## 思路
+1. easy to use, just submit `SmartLimiter` to achieve the purpose of service rate limit.
+2. adaptive rate limit, dynamic triggering of rate limit rules according to `metric`. 
+3. Cover many scenarios, support global shared rate limit, global average rate limit, and single rate limit.
 
-自适应限流的首要目标是为了让用户从繁琐的`EnvoyFilter`配置中脱离出来，所以我们利用`kubernetes`的`CRD`机制，我们定义了一套简便的`API`，即`kubernetes`内的`SmartLimiter`资源。用户只需要按照`SmartLimiter`的规范提交一个`CR`。
+## Function
+1. single rate limit, each load of the service will have its own rate limit counter. 
+2. global shared rate limit, all loads of a service share a single rate limit counter. 
+3. global average rate limit, which distributes the rate limit counters equally among all loads.
+see [function](./document/smartlimiter.md#smartlimiter)
 
-自适应限流的另一个目标是让限流策略足够的灵活，比如当服务的`CPU`使用量达到某个值后才开启限流，为此我们引入了
+## Thinking
 
-自适应限流组件会将结合`metric`和用户提交的内容生成一份`EnvoyFilter`,并将该`EnvoyFilter`提交到`istio`，`istio`按照`EnvoyFilter`要求将其下发给`envoy`。为了丰富实用场景，`SmartLimiter`支持三种限流策略全局共享限流`global`，均分限流 `average`和单机限流`single`。
+To get users out of the tedious `EnvoyFilter` configuration, we define an easy `API` using `kubernetes` `CRD` mechanism, the `SmartLimiter` resource within `kubernetes`. After a user submits a `SmartLimiter` to a `kubernetes` cluster, the `SmartLimiter Controler` generates an `EnvoyFilter` in conjunction with the `SmartLimiter` spec and service metrics.
 
-`SmartLimiter`的CRD定义的比较接近自然语义，例如，希望当`reviews`服务的`v1`版本的服务消耗`cpu`总量大于10的时候，触发限流，让其每个`POD`的9080端口的服务每秒钟只能处理10次请求。
+## Architecture
+
+The main architecture of adaptive rate limit is divided into two parts, one part includes the logical transformation of `SmartLimiter` to `EnvoyFilter`, and the other part includes the acquisition of monitoring data within the cluster, including service metrics such as `CPU`, `Memory`, `POD` counts, etc., as detailed in [architecture]()
+
+<img src="./media/SmartLimiter.png" style="zoom:80%;" />
+
+## Sample
+
+When the total amount of `cpu` consumed by all loads of the `reviews` service is greater than 10, trigger a rate limit so that each load's port 9080 can only handle 10 requests per second, see [example](./document/smartlimiter.md#example)
 
 ~~~yaml
-apiVersion: microservice.slime.io/v1alpha1
+apiVersion: microservice.slime.io/v1alpha2
 kind: SmartLimiter
 metadata:
   name: review
   namespace: default
 spec:
   sets:
-    v1:
+    _base:
       descriptor:
       - action:
           fill_interval:
@@ -40,8 +60,8 @@ spec:
           port: 9080
 ~~~
 
-## 架构
+## Dependencies
 
-自适应限流的主体架构分为两个部分，一部分包括`SmartLimiter`到`EnvoyFilter`的逻辑转化，另一部分包括集群内监控数据的获取，包括服务的`CPU`, `Memory`,`POD`数量等数据。
+1. In order to complete the adaptive function, we need to get the basic metrics of the service, so this service depends on `prometheus`, for details on how to build a simple `prometheus`, see [prometheus](./document/smartlimiter.md#installing-prometheus)
+2. In order to complete the global shared rate limitation, we need a global counter, we introduced `RLS`, about `RLS` see [RLS](./document/smartlimiter.md#installing-rls--redis)
 
-<img src="./media/SmartLimiter.png" style="zoom:80%;" />
