@@ -4,7 +4,7 @@
 */
 
 syntax = "proto3";
-package slime.microservice.v1alpha2;
+package slime.microservice.limiter.v1alpha2;
 
 option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha2";
 
