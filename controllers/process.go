@@ -172,57 +172,67 @@ func (r *SmartLimiterReconciler) getMaterial(loc types.NamespacedName) map[strin
 }
 
 func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLimiterReconciler, obj *v1alpha3.EnvoyFilter) (reconcile.Result, error) {
-	name := obj.GetName()
-	namespace := obj.GetNamespace()
 
 	if err := controllerutil.SetControllerReference(instance, obj, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
+
+	loc := types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}
+	istioRev := slime_model.IstioRevFromLabel(instance.Labels)
+	slime_model.PatchIstioRevLabel(&obj.Labels, istioRev)
+
 	found := &v1alpha3.EnvoyFilter{}
-
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, found)
-
-	// 如果新构建的envoyfilter 的spec为空， 且查询的有错且不是notfound,那么从新入队列，需要重试，查询没有错误则说明需要删除该obj
-	// Delete
-	if obj.Spec == nil {
-		if err != nil && !errors.IsNotFound(err) {
-			return reconcile.Result{}, err
-		} else if err == nil {
-			err = r.Client.Delete(context.TODO(), obj)
-			return reconcile.Result{}, err
+	if err := r.Client.Get(context.TODO(), loc, found); err != nil {
+		if errors.IsNotFound(err) {
+			found = nil
+			err = nil
+			log.Infof("envoyfilter %v no found", loc)
 		} else {
-			// nothing to do
+			log.Infof("get envoyfilter err: %+v", err.Error())
+			return reconcile.Result{}, err
+		}
+	}
+
+	// Envoy is found or not
+	if found == nil {
+		// found is nil and obj's spec is not nil , create envoyFilter
+		if obj.Spec != nil {
+			if err := r.Client.Create(context.TODO(), obj); err != nil {
+				log.Infof("Creating a new EnvoyFilter err, %+v", err.Error())
+				return reconcile.Result{}, err
+			}
+			log.Infof("Creating a new EnvoyFilter,%v", loc)
 			return reconcile.Result{}, nil
 		}
-	}
+	} else {
 
-	// Create
-	if err != nil && errors.IsNotFound(err) {
-		log.Infof("Creating a new EnvoyFilter,%s:%s", namespace, name)
-		err = r.Client.Create(context.TODO(), obj)
-		if err != nil {
-			return reconcile.Result{}, err
+		if slime_model.IstioRevFromLabel(found.Labels) != istioRev {
+			log.Errorf("existing envoyfilter %v istioRev %s but our %s, skip ...",
+				loc, slime_model.IstioRevFromLabel(found.Labels), istioRev)
+			return reconcile.Result{},nil
 		}
 
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
-	} else if err != nil {
-		return reconcile.Result{}, err
-	}
+		// spec is not nil , update
+		if obj.Spec != nil {
+			if !reflect.DeepEqual(found.Spec, obj.Spec) {
+				log.Infof("Update a new EnvoyFilter,%v", loc)
+				obj.ResourceVersion = found.ResourceVersion
+				err := r.Client.Update(context.TODO(), obj)
+				if err != nil {
+					return reconcile.Result{}, err
+				}
 
-	// TODO: 判断是否需要更新
-	// Update
-	if !reflect.DeepEqual(found.Spec, obj.Spec) {
-
-		log.Infof("Update a new EnvoyFilter,%s:%s", namespace, name)
-		obj.ResourceVersion = found.ResourceVersion
-		err = r.Client.Update(context.TODO(), obj)
-		if err != nil {
+				// Pod created successfully - don't requeue
+				return reconcile.Result{}, nil
+			}
+		} else {
+			// spec is nil , delete
+			err := r.Client.Delete(context.TODO(), obj)
+			if errors.IsNotFound(err) {
+				err = nil
+			}
 			return reconcile.Result{}, err
 		}
-
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
 	}
 	return reconcile.Result{}, nil
 }

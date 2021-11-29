@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 	"slime.io/slime/framework/apis/config/v1alpha1"
 	"slime.io/slime/framework/bootstrap"
+	slime_model "slime.io/slime/framework/model"
 	event_source "slime.io/slime/framework/model/source"
 	"slime.io/slime/framework/model/source/aggregate"
 	"slime.io/slime/framework/model/source/k8s"
@@ -67,15 +68,19 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	_ = context.Background()
 
 	instance := &microservicev1alpha2.SmartLimiter{}
-	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
-
-	// 异常分支
-	if err != nil && !errors.IsNotFound(err) {
-		return reconcile.Result{}, err
+	if err := r.Client.Get(context.TODO(), req.NamespacedName, instance); err != nil {
+		if errors.IsNotFound(err) {
+			instance = nil
+			err = nil
+			log.Infof("smartlimiter %v no found", req.NamespacedName)
+		} else {
+			log.Errorf("get smartlimiter %v err, %s",req.NamespacedName,err)
+			return reconcile.Result{},err
+		}
 	}
 
-	// 资源删除
-	if err != nil && errors.IsNotFound(err) {
+	// deleted
+	if instance == nil {
 		log.Infof("metricInfo.Pop, name %s, namespace,%s", req.Name, req.Namespace)
 		r.metricInfo.Pop(req.Namespace + "/" + req.Name)
 		r.source.WatchRemove(req.NamespacedName)
@@ -84,22 +89,28 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		r.lastUpdatePolicyLock.Unlock()
 		//if contain global smart limiter, should delete info in configmap
 		refreshConfigMap([]*model.Descriptor{}, r, req.NamespacedName)
-		return reconcile.Result{}, err
-	}
-
-	// 资源更新
-	r.lastUpdatePolicyLock.RLock()
-	if reflect.DeepEqual(instance.Spec, r.lastUpdatePolicy) {
-		r.lastUpdatePolicyLock.RUnlock()
 		return reconcile.Result{}, nil
 	} else {
-		r.lastUpdatePolicyLock.RUnlock()
-		r.lastUpdatePolicyLock.Lock()
-		r.lastUpdatePolicy = instance.Spec
-		r.lastUpdatePolicyLock.Unlock()
-		r.source.WatchAdd(req.NamespacedName)
-	}
+		// add or update
 
+		if !r.env.RevInScope(slime_model.IstioRevFromLabel(instance.Labels)) {
+			log.Debugf("existing smartlimiter %v istiorev %s but our %s, skip ...",
+				req.NamespacedName, slime_model.IstioRevFromLabel(instance.Labels), r.env.IstioRev())
+			return ctrl.Result{}, nil
+		}
+		// 资源更新
+		r.lastUpdatePolicyLock.RLock()
+		if reflect.DeepEqual(instance.Spec, r.lastUpdatePolicy) {
+			r.lastUpdatePolicyLock.RUnlock()
+			return reconcile.Result{}, nil
+		} else {
+			r.lastUpdatePolicyLock.RUnlock()
+			r.lastUpdatePolicyLock.Lock()
+			r.lastUpdatePolicy = instance.Spec
+			r.lastUpdatePolicyLock.Unlock()
+			r.source.WatchAdd(req.NamespacedName)
+		}
+	}
 	return ctrl.Result{}, nil
 }
 
