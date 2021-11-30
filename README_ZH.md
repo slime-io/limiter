@@ -63,5 +63,5 @@ spec:
 ~~~
 
 ## 依赖
-1. 依赖 `Prometheus` , [安装](./document/smartlimiter_zh.md#安装-prometheus)
-2. 依赖 `RLS` ,可选，[安装](./document/smartlimiter_zh.md#安装-rls--redis)
+1. 依赖 `Prometheus` , [prometheus安装](./document/smartlimiter_zh.md#安装-prometheus)
+2. 依赖 `RLS` ,可选，[RLS安装](./document/smartlimiter_zh.md#安装-rls--redis)
