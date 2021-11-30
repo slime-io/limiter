@@ -1,7 +1,7 @@
 - [自适应限流](#自适应限流)
   - [安装和使用](#安装和使用)
     - [安装 Prometheus](#安装-prometheus)
-    - [安装 Rls & Redis](#安装-Rls-&-Redis)
+    - [安装 Rls & Redis](#安装-RLS-&-Redis)
     - [安装 Limiter](#安装-limiter)
   - [SmartLimiter](#smartlimiter)
     - [单机限流](#单机限流)
@@ -15,28 +15,28 @@
 
 ## 安装和使用
 
-在安装服务前请先阅读  [安装Promeetheus](#安装-prometheus) 和 [安装 Rls & Redis](#安装-rls-&-redis)
+在安装服务前请先阅读  [安装Prometheus](#安装-prometheus) 和 [安装 Rls & Redis](#安装-rls-&-redis)
 
 ### 安装 Prometheus 
 
 Prometheus 是一款广泛应用的监控系统，本服务依赖prometheus采集服务指标。
 
-为此我们提供了一个简单的Prometheus 安装清单，使用以下命令进行安装。
+为此我们提供了一个简单的Prometheus安装清单，使用以下命令进行安装。
 
 ```
 kubectl apply -f "https://raw.githubusercontent.com/slime-io/limiter/master/install/prometheus.yaml"
 ```
 
-### 安装 Rls & Redis
+### 安装 RLS & Redis
 
 RLS服务即 Rate Limit Service [RLS](https://github.com/envoyproxy/ratelimit) , 我们利用它支持全局共享限流, 如果确认服务不需要支持全局限流可以选择不安装Rls, 跳过该小节。
 
-简单介绍下RLS 服务，它是一个GO开发的gRPC服务，利用Redis支持了全局限流的功能。当你配置了全局限流SmartLimiter 后，该资源清单首先会被转化成EnvoyFilter，Istio会根据EnvoyFilter内容下发限流规则到相应的envoy，之后envoy在执行全局限流规则时，会去访问RLS服务，让其决定是否进行限流。 
+简单介绍下RLS服务，它是一个GO开发的gRPC服务，利用Redis支持了全局限流的功能。当你配置了全局限流SmartLimiter后，该资源清单首先会被转化成EnvoyFilter，Istio会根据EnvoyFilter内容下发限流规则到相应的Envoy，之后Envoy在执行全局限流规则时，会去访问RLS服务，让其决定是否进行限流。 
 
-为此我们提供了一个简单的Rls &Redis 安装清单，使用以下命令进行安装。
+为此我们提供了一个简单的 RLS&Redis 安装清单，使用以下命令进行安装。
 
 ~~~
-kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/master/install/rls.yaml"
+kubectl apply -f "https://raw.githubusercontent.com/slime-io/limiter/master/install/rls.yaml"
 ~~~
 
 ### 安装 Limiter
@@ -90,7 +90,7 @@ spec:
 
 在上面清单中，我们默认配置了prometheus作为监控源，prometheus.handlers定义了希望从监控中获取的监控指标，这些监控指标可以作为一些自适应算法的阈值，从而达到自适应限流。
 
- 用户也可以根据需要定义limiter模块需要获取的监控指标，以下是一些可以常用的监控指标获取语句：
+用户也可以根据需要定义limiter模块需要获取的监控指标，以下是一些可以常用的监控指标获取语句：
 
 ```
 cpu:
@@ -128,7 +128,7 @@ histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{kub
 
 单机限流功能替服务的每个pod设置固定的限流数值，其底层是依赖envoy插件envoy.filters.http.local_ratelimit 提供的限流能力，[Local Ratelimit Plugin](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/local_rate_limit_filter)。
 
-简单样例如下，我们对reviews服务进行限流，根据condition字段的值判断是否执行限流，这里我们直接设置了true，让其永久执行限流，同样用户可以设置一个动态的值，limiter 会计算其结果，动态的进行限流。fill_interval 指定限流间隔为60s，quota指定限流数量10，strategy标识该限流是单机限流single，target 字段标识需要限流的端口9080。
+简单样例如下，我们对reviews服务进行限流，根据condition字段的值判断是否执行限流，这里我们直接设置了true，让其永久执行限流，同样用户可以设置一个动态的值，limiter 会计算其结果，动态的进行限流。fill_interval 指定限流间隔为60s，quota指定限流数量100，strategy标识该限流是单机限流single，target 字段标识需要限流的端口9080。
 
 ```yaml
 apiVersion: microservice.slime.io/v1alpha2
@@ -143,7 +143,7 @@ spec:
       - action:    # 限流规则
           fill_interval:
             seconds: 60
-          quota: '10'
+          quota: '100'
           strategy: 'single'  
         condition: 'true'  # 永远执行该限流
         #condition: '{{._base.cpu.sum}}>100'  如果服务的所有负载大于100，则执行该限流
