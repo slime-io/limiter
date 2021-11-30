@@ -15,7 +15,7 @@
 
 ## Installation and Usage
 
-Please read the Installing [Promeetheus ]() and Installing [Rls & Redis]() subsections before installing the service
+Please read the Installing [Prometheus](#installing-prometheus) and Installing [RLS & Redis](#installing-rls--redis) subsections before installing the service
 
 ### Installing Prometheus 
 
@@ -27,13 +27,13 @@ A simple Prometheus installation checklist is provided for this purpose, use the
 kubectl apply -f "https://raw.githubusercontent.com/slime-io/limiter/master/install/prometheus.yaml"
 ```
 
-### Installing Rls & Redis
+### Installing RLS & Redis
 
 RLS service is Rate Limit Service [RLS](https://github.com/envoyproxy/ratelimit), we use it to support global shared rate limiting, if you confirm that the service does not need to support global rate limiting you can choose not to install RLS, skip this section.
 
 A brief introduction to the RLS service is that it is a GO-developed gRPC service that leverages Redis to support fully restricted streaming. After you have configured the SmartLimiter, the resource list will first be transformed into EnvoyFilter, and Istio will send rate limiting restriction rules to the corresponding envoy based on the EnvoyFilter content. 
 
-A simple Rls & Redis installation checklist is provided for this purpose, using the following command
+A simple RLS & Redis installation checklist is provided for this purpose, using the following command
 
 ~~~
 kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/master/install/rls.yaml"
@@ -41,7 +41,7 @@ kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/master/instal
 
 ### Install Limiter
 
-Please first follow the [slime-boot installation]() guidelines to install slime-boot which is a bootloader for slime. After installation, users can install different slime modules by submitting SlimeBoot resources.
+Please first follow the [slime-boot installation](https://raw.githubusercontent.com/slime-io/slime/master/doc/en/slime-boot.md) guidelines to install slime-boot which is a bootloader for slime. After installation, users can install different slime modules by submitting SlimeBoot resources.
 
 The user can manually submit the following yaml file to install the limiter module, which SlimeBoot can specify the limiter image version and the specific metrics to be queried.
 
@@ -119,7 +119,7 @@ histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{kub
 
 ## SmartLimiter 
 
-Definition in [proto]()
+Definition in [proto](https://raw.githubusercontent.com/slime-io/limiter/master/api/v1alpha2/smart_limiter.proto)
 
 Note that each service can only create one SmartLimiter resource, whose name and namespace corresponds to the service's name and namespace
 
@@ -142,7 +142,7 @@ spec:
       - action:    
           fill_interval:
             seconds: 60
-          quota: '100'
+          quota: '10'
           strategy: 'single'  
         condition: 'true' 
         #condition: '{{._base.cpu.sum}}>100'

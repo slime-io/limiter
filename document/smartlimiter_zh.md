@@ -1,7 +1,7 @@
 - [自适应限流](#自适应限流)
   - [安装和使用](#安装和使用)
     - [安装 Prometheus](#安装-prometheus)
-    - [安装 Rls & Redis](#安装-rls--redis)
+    - [安装 Rls & Redis](#安装-Rls-&-Redis)
     - [安装 Limiter](#安装-limiter)
   - [SmartLimiter](#smartlimiter)
     - [单机限流](#单机限流)
@@ -15,7 +15,7 @@
 
 ## 安装和使用
 
-在安装服务前请先阅读  [安装Promeetheus](#安装-prometheus) 和 [安装 Rls & Redis](#安装-rls--redis)
+在安装服务前请先阅读  [安装Promeetheus](#安装-prometheus) 和 [安装 Rls & Redis](#安装-rls-&-redis)
 
 ### 安装 Prometheus 
 
@@ -41,7 +41,7 @@ kubectl apply -f "https://raw.githubusercontent.com/slime-io/slime/master/instal
 
 ### 安装 Limiter
 
-请先按照[slime-boot 安装]()指引安装`slime-boot` ，该服务是slime的一个引导程序，安装后用户可以通过提交SlimeBoot资源的方式安装不同的slime模块。
+请先按照[slime-boot 安装](https://raw.githubusercontent.com/slime-io/slime/master/doc/zh/slime-boot.md) 指引安装`slime-boot`，该服务是slime的一个引导程序，安装后用户可以通过提交SlimeBoot资源的方式安装不同的slime模块。
 
 之后，用户可以手动提交以下yaml 文件，安装 limiter模块，该SlimeBoot可以指定limiter镜像版本以及需要查询的具体指标。
 
@@ -143,7 +143,7 @@ spec:
       - action:    # 限流规则
           fill_interval:
             seconds: 60
-          quota: '100'
+          quota: '10'
           strategy: 'single'  
         condition: 'true'  # 永远执行该限流
         #condition: '{{._base.cpu.sum}}>100'  如果服务的所有负载大于100，则执行该限流
