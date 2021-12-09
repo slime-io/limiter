@@ -9,7 +9,7 @@ const (
 
 	GenericKey = "generic_key"
 
-	HeaderValueMatch = "header_value_match"
+	HeaderValueMatch = "header_match"
 
 	Domain = "slime"
 

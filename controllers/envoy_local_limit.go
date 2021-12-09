@@ -253,7 +253,9 @@ func generateDescriptorValue(item *microservicev1alpha2.SmartLimitDescriptor, lo
 func generateSafeRegexMatch(match *microservicev1alpha2.SmartLimitDescriptor_HeaderMatcher) *envoy_config_route_v3.HeaderMatcher_SafeRegexMatch {
 	return &envoy_config_route_v3.HeaderMatcher_SafeRegexMatch{
 		SafeRegexMatch: &envoy_match_v3.RegexMatcher{
-			EngineType: &envoy_match_v3.RegexMatcher_GoogleRe2{},
+			EngineType: &envoy_match_v3.RegexMatcher_GoogleRe2{
+				GoogleRe2: &envoy_match_v3.RegexMatcher_GoogleRE2{},
+			},
 			Regex:      match.RegexMatch,
 		},
 	}

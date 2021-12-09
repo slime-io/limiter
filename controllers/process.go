@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/json"
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -176,8 +177,7 @@ func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLim
 	if err := controllerutil.SetControllerReference(instance, obj, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
-
-	loc := types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}
+	loc := types.NamespacedName{Name: obj.Name, Namespace: instance.Namespace}
 	istioRev := slime_model.IstioRevFromLabel(instance.Labels)
 	slime_model.PatchIstioRevLabel(&obj.Labels, istioRev)
 
@@ -212,16 +212,24 @@ func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLim
 			return reconcile.Result{},nil
 		}
 
+		foundSpec,err := json.Marshal(found.Spec)
+		if err != nil {
+			log.Errorf("marshal found.spec err: %+v",err)
+		}
+		objSpec,err := json.Marshal(obj.Spec)
+		if err != nil {
+			log.Errorf("marshal obj.spec err: %+v",err)
+		}
 		// spec is not nil , update
 		if obj.Spec != nil {
-			if !reflect.DeepEqual(found.Spec, obj.Spec) {
-				log.Infof("Update a new EnvoyFilter,%v", loc)
+			if !reflect.DeepEqual(string(foundSpec), string(objSpec)) {
 				obj.ResourceVersion = found.ResourceVersion
 				err := r.Client.Update(context.TODO(), obj)
 				if err != nil {
+					log.Errorf("update envoyfilter err: %+v",err.Error())
 					return reconcile.Result{}, err
 				}
-
+				log.Infof("Update a new EnvoyFilter succeed,%v", loc)
 				// Pod created successfully - don't requeue
 				return reconcile.Result{}, nil
 			}
