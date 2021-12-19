@@ -18,10 +18,11 @@ package controllers
 
 import (
 	"context"
+	stderrors "errors"
 	cmap "github.com/orcaman/concurrent-map"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,13 +31,12 @@ import (
 	"slime.io/slime/framework/apis/config/v1alpha1"
 	"slime.io/slime/framework/bootstrap"
 	slime_model "slime.io/slime/framework/model"
-	event_source "slime.io/slime/framework/model/source"
-	"slime.io/slime/framework/model/source/aggregate"
-	"slime.io/slime/framework/model/source/k8s"
+	"slime.io/slime/framework/model/metric"
+	"slime.io/slime/framework/model/trigger"
 	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
-	"slime.io/slime/modules/limiter/controllers/multicluster"
 	"slime.io/slime/modules/limiter/model"
 	"sync"
+	"time"
 )
 
 // SmartLimiterReconciler reconciles a SmartLimiter object
@@ -45,20 +45,25 @@ type SmartLimiterReconciler struct {
 	Scheme *runtime.Scheme
 
 	cfg    *v1alpha1.Limiter
-	env    *bootstrap.Environment
+	env    bootstrap.Environment
 	scheme *runtime.Scheme
 
+
+	interest cmap.ConcurrentMap
+	// reuse, or use anther filed to store interested nn
+	// key is the interested namespace/name
+	// value is the metricInfo
 	metricInfo   cmap.ConcurrentMap
 	MetricSource source.Source
 
 	metricInfoLock sync.RWMutex
-	eventChan      chan event_source.Event
-	source         event_source.Source
 
 	lastUpdatePolicy     microservicev1alpha2.SmartLimiterSpec
 	lastUpdatePolicyLock *sync.RWMutex
 
-	//globalRateLimitInfo cmap.ConcurrentMap
+	watcherMetricChan    <-chan metric.Metric
+	tickerMetricChan     <-chan metric.Metric
+	//Interest     cmap.ConcurrentMap
 }
 
 // +kubebuilder:rbac:groups=microservice.slime.io,resources=smartlimiters,verbs=get;list;watch;create;update;patch;delete
@@ -72,7 +77,7 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 		if errors.IsNotFound(err) {
 			instance = nil
 			err = nil
-			log.Infof("smartlimiter %v no found", req.NamespacedName)
+			log.Infof("smartlimiter %v not found", req.NamespacedName)
 		} else {
 			log.Errorf("get smartlimiter %v err, %s",req.NamespacedName,err)
 			return reconcile.Result{},err
@@ -83,7 +88,7 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 	if instance == nil {
 		log.Infof("metricInfo.Pop, name %s, namespace,%s", req.Name, req.Namespace)
 		r.metricInfo.Pop(req.Namespace + "/" + req.Name)
-		r.source.WatchRemove(req.NamespacedName)
+		r.interest.Pop(req.Namespace + "/" + req.Name)
 		r.lastUpdatePolicyLock.Lock()
 		r.lastUpdatePolicy = microservicev1alpha2.SmartLimiterSpec{}
 		r.lastUpdatePolicyLock.Unlock()
@@ -108,7 +113,11 @@ func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error
 			r.lastUpdatePolicyLock.Lock()
 			r.lastUpdatePolicy = instance.Spec
 			r.lastUpdatePolicyLock.Unlock()
-			r.source.WatchAdd(req.NamespacedName)
+			r.interest.Set(req.Namespace+"/"+req.Name, struct {}{})
+			//r.handleEvent(types.NamespacedName{
+			//	Namespace: req.Namespace,
+			//	Name:      req.Name,
+			//})
 		}
 	}
 	return ctrl.Result{}, nil
@@ -120,32 +129,122 @@ func (r *SmartLimiterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func NewReconciler(cfg *v1alpha1.Limiter, mgr ctrl.Manager, env *bootstrap.Environment) *SmartLimiterReconciler {
+
+func NewReconciler(cfg *v1alpha1.Limiter, mgr ctrl.Manager, env bootstrap.Environment) *SmartLimiterReconciler {
 	log := log.WithField("controllers", "SmartLimiter")
-	eventChan := make(chan event_source.Event)
-	src := &aggregate.Source{}
-	ms, err := k8s.NewMetricSource(eventChan, env)
+	// generate producer config
+	pc, err := newProducerConfig(env)
 	if err != nil {
-		log.Errorf("failed to create slime-metric,%+v", err)
+		log.Errorf("%v", err)
 		return nil
-	}
-	src.AppendSource(ms)
-	f := ms.SourceClusterHandler()
-	if cfg.Multicluster {
-		mc := multicluster.New(env, []func(*kubernetes.Clientset){f}, nil)
-		go mc.Run()
 	}
 	r := &SmartLimiterReconciler{
 		Client:               mgr.GetClient(),
 		scheme:               mgr.GetScheme(),
 		metricInfo:           cmap.New(),
-		eventChan:            eventChan,
-		source:               src,
+		interest: 			  cmap.New(),
 		env:                  env,
 		lastUpdatePolicyLock: &sync.RWMutex{},
-		//globalRateLimitInfo: cmap.New(),
+		watcherMetricChan:    pc.WatcherProducerConfig.MetricChan,
+		tickerMetricChan:     pc.TickerProducerConfig.MetricChan,
 	}
-	r.source.Start(env.Stop)
-	r.WatchSource(env.Stop)
+	// reconciler defines producer metric handler
+	pc.WatcherProducerConfig.NeedUpdateMetricHandler = r.handleWatcherEvent
+	pc.TickerProducerConfig.NeedUpdateMetricHandler = r.handleTickerEvent
+	// start producer
+	metric.NewProducer(pc)
+	log.Infof("producers starts")
+
+	if env.Config.Metric != nil {
+		go r.WatchMetric()
+	}
+
 	return r
+}
+
+//func NewReconciler(cfg *v1alpha1.Limiter, mgr ctrl.Manager, env *bootstrap.Environment) *SmartLimiterReconciler {
+//	log := log.WithField("controllers", "SmartLimiter")
+//	eventChan := make(chan event_source.Event)
+//	src := &aggregate.Source{}
+//	ms, err := k8s.NewMetricSource(eventChan, env)
+//	if err != nil {
+//		log.Errorf("failed to create slime-metric,%+v", err)
+//		return nil
+//	}
+//	src.AppendSource(ms)
+//	f := ms.SourceClusterHandler()
+//	if cfg.Multicluster {
+//		mc := multicluster.New(env, []func(*kubernetes.Clientset){f}, nil)
+//		go mc.Run()
+//	}
+//	r := &SmartLimiterReconciler{
+//		Client:               mgr.GetClient(),
+//		scheme:               mgr.GetScheme(),
+//		metricInfo:           cmap.New(),
+//		eventChan:            eventChan,
+//		source:               src,
+//		env:                  env,
+//		lastUpdatePolicyLock: &sync.RWMutex{},
+//		//globalRateLimitInfo: cmap.New(),
+//	}
+//	r.source.Start(env.Stop)
+//	r.WatchSource(env.Stop)
+//	return r
+//}
+
+
+func newProducerConfig(env bootstrap.Environment) (*metric.ProducerConfig, error) {
+
+	// init metric source
+	var enablePrometheusSource bool
+	var prometheusSourceConfig metric.PrometheusSourceConfig
+	var err error
+
+	switch env.Config.Global.Misc[model.MetricSourceType] {
+	case model.MetricSourceTypePrometheus:
+		enablePrometheusSource = true
+		prometheusSourceConfig, err = newPrometheusSourceConfig(env)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, stderrors.New("wrong metric_source_type")
+	}
+
+	// init whole producer config
+	pc := &metric.ProducerConfig{
+		EnablePrometheusSource: enablePrometheusSource,
+		PrometheusSourceConfig: prometheusSourceConfig,
+		EnableWatcherProducer:  true,
+		WatcherProducerConfig: metric.WatcherProducerConfig{
+			Name:       "smartLimiter-watcher",
+			MetricChan: make(chan metric.Metric),
+			WatcherTriggerConfig: trigger.WatcherTriggerConfig{
+				Kinds: []schema.GroupVersionKind{
+					{
+						Group:   "",
+						Version: "v1",
+						Kind:    "Endpoints",
+					},
+				},
+				EventChan:     make(chan trigger.WatcherEvent),
+				DynamicClient: env.DynamicClient,
+			},
+		},
+		EnableTickerProducer: true,
+		TickerProducerConfig: metric.TickerProducerConfig{
+			Name:       "smartLimiter-ticker",
+			MetricChan: make(chan metric.Metric),
+			TickerTriggerConfig: trigger.TickerTriggerConfig{
+				Durations: []time.Duration{
+					10 * time.Second,
+				},
+				EventChan: make(chan trigger.TickerEvent),
+			},
+		},
+		StopChan: env.Stop,
+	}
+
+	return pc, nil
+
 }

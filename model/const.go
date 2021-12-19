@@ -32,4 +32,10 @@ const (
 	EnvoyStatPrefix = "stat_prefix"
 
 	EnvoyHttpLocalRateLimiterStatPrefix = "http_local_rate_limiter"
+
+	MetricSourceTypePrometheus = "prometheus"
+
+	MetricSourceType =  "metric_source_type"
+
+	InlineMetricPod = "pod"
 )

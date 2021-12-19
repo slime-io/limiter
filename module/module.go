@@ -50,7 +50,7 @@ func (m *Module) InitManager(mgr manager.Manager, env bootstrap.Environment, cbs
 		cfg = env.Config.Limiter
 	}
 
-	rec := controllers.NewReconciler(cfg, mgr, &env)
+	rec := controllers.NewReconciler(cfg, mgr, env)
 	if err := rec.SetupWithManager(mgr); err != nil {
 		log.Errorf("unable to create controller SmartLimiter, %+v", err)
 		util.Fatal()

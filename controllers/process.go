@@ -20,30 +20,83 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"slime.io/slime/framework/apis/networking/v1alpha3"
 	slime_model "slime.io/slime/framework/model"
-	event_source "slime.io/slime/framework/model/source"
+	"slime.io/slime/framework/model/metric"
 	"slime.io/slime/framework/util"
 	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
 	"slime.io/slime/modules/limiter/model"
+	"strconv"
 	"strings"
 )
 
-func (r *SmartLimiterReconciler) WatchSource(stop <-chan struct{}) {
-	go func() {
-		for {
-			select {
-			case <-stop:
+func (r *SmartLimiterReconciler) WatchMetric() {
+	log := log.WithField("reporter", "SmartLimiterReconciler").WithField("function", "WatchMetric")
+	log.Infof("start watching metric")
+
+	for {
+		select {
+		case metric, ok := <-r.watcherMetricChan:
+			if !ok {
+				log.Warningf("watcher mertic channel closed, break process loop")
 				return
-			case e := <-r.eventChan:
-				switch e.EventType {
-				case event_source.Update, event_source.Add:
-					if _, err := r.Refresh(reconcile.Request{NamespacedName: e.Loc}, e.Info); err != nil {
-						log.Errorf("error: %+v", err)
-					}
+			}
+			r.ConsumeMetric(metric)
+		case metric, ok := <-r.tickerMetricChan:
+			if !ok {
+				log.Warningf("ticker metric channel closed, break process loop")
+				return
+			}
+			r.ConsumeMetric(metric)
+		}
+	}
+}
+
+
+func (r *SmartLimiterReconciler) ConsumeMetric(metricMap metric.Metric) {
+
+	log.Infof("get metricMap, %+v",metricMap)
+
+	for metaInfo, results := range metricMap {
+
+		log.Debugf("get metric for %s", metaInfo)
+		Info := make(map[string]string)
+		meta := &StaticMeta{}
+		if err := json.Unmarshal([]byte(metaInfo),meta); err != nil {
+			log.Errorf("unmarshal meata info, get err, %+v",err.Error())
+			continue
+		}
+		namespace,name := meta.Namespace,meta.Name
+		loc := types.NamespacedName{Namespace: namespace, Name: name}
+		nPod, isGroup := meta.NPod,meta.IsGroup
+
+		for _, result := range results {
+			metricName := result.Name
+			metricValue := ""
+			if !isGroup[metricName] {
+				if len(result.Value) != 1 {
+					continue
 				}
+				for _,value := range result.Value {
+					metricValue = value
+				}
+				Info[metricName] = metricValue
+			} else {
+				Info = result.Value
 			}
 		}
-	}()
+		for subset, number := range nPod {
+			if number == 0 {
+				continue
+			}
+			Info[subset] = strconv.Itoa(number)
+		}
+
+		log.Infof("get info, %v",Info)
+		if _, err := r.Refresh(reconcile.Request{NamespacedName: loc}, Info); err != nil {
+			log.Errorf("refresh error:%v", err)
+		}
+	}
 }
+
 
 func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[string]string) (reconcile.Result, error) {
 	_, ok := r.metricInfo.Get(request.Namespace + "/" + request.Name)
