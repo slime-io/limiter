@@ -66,7 +66,7 @@ type SmartLimiterReconciler struct {
 
 func (r *SmartLimiterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	_ = context.Background()
-
+	log.Debugf("begin reconcile,get smartlimiter %+v",req)
 	instance := &microservicev1alpha2.SmartLimiter{}
 	if err := r.Client.Get(context.TODO(), req.NamespacedName, instance); err != nil {
 		if errors.IsNotFound(err) {

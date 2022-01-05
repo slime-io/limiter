@@ -77,6 +77,7 @@ func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[str
 			return reconcile.Result{}, err
 		}
 	}
+
 	if result, err := r.refresh(instance); err == nil {
 		return result, nil
 	} else {
@@ -86,6 +87,7 @@ func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[str
 
 // refresh envoy filters and configmap
 func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLimiter) (reconcile.Result, error) {
+
 	var err error
 	loc := types.NamespacedName{
 		Namespace: instance.Namespace,
@@ -129,7 +131,7 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLim
 				log.Errorf("proto map err :%+v", err)
 			}
 		}
-		_, err := refreshEnvoyFilter(instance, r, efcr)
+		_, err = refreshEnvoyFilter(instance, r, efcr)
 		if err != nil {
 			log.Errorf("generated/deleted EnvoyFilter %s failed:%+v", efcr.Name, err)
 		}
@@ -139,7 +141,7 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLim
 		RatelimitStatus: descriptor,
 		MetricStatus:    material,
 	}
-	if err := r.Client.Status().Update(context.TODO(), instance); err != nil {
+	if err = r.Client.Status().Update(context.TODO(), instance); err != nil {
 		return reconcile.Result{}, err
 	}
 	return reconcile.Result{}, nil
@@ -186,10 +188,8 @@ func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLim
 		if errors.IsNotFound(err) {
 			found = nil
 			err = nil
-			log.Infof("envoyfilter %v no found", loc)
 		} else {
-			log.Infof("get envoyfilter err: %+v", err.Error())
-			return reconcile.Result{}, err
+			return reconcile.Result{}, fmt.Errorf("get envoyfilter err: %+v", err.Error())
 		}
 	}
 
@@ -198,11 +198,12 @@ func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLim
 		// found is nil and obj's spec is not nil , create envoyFilter
 		if obj.Spec != nil {
 			if err := r.Client.Create(context.TODO(), obj); err != nil {
-				log.Infof("Creating a new EnvoyFilter err, %+v", err.Error())
-				return reconcile.Result{}, err
+				return reconcile.Result{}, fmt.Errorf("creating a new EnvoyFilter err, %+v", err.Error())
 			}
-			log.Infof("Creating a new EnvoyFilter,%v", loc)
+			log.Infof("creating a new EnvoyFilter,%+v", loc)
 			return reconcile.Result{}, nil
+		} else {
+			log.Infof("envoyfilter %+v is not found, and obj spec is nil, skip ",loc)
 		}
 	} else {
 

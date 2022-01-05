@@ -75,6 +75,16 @@ func generateHttpRouterPatch(descriptors []*microservicev1alpha2.SmartLimitDescr
 
 // only enable local rate limit
 func generateHttpFilterLocalRateLimitPatch() *networking.EnvoyFilter_EnvoyConfigObjectPatch {
+
+	localRateLimit := &envoy_extensions_filters_http_local_ratelimit_v3.LocalRateLimit{
+		StatPrefix:     util.Struct_EnvoyLocalRateLimit_Limiter,
+	}
+	local, err := util.MessageToStruct(localRateLimit)
+	if err != nil {
+		log.Errorf("can not be here, convert message to struct err,%+v",err.Error())
+		return nil
+	}
+
 	patch := &networking.EnvoyFilter_EnvoyConfigObjectPatch{
 		ApplyTo: networking.EnvoyFilter_HTTP_FILTER,
 		Match:   generateEnvoyHttpFilterMatch(),
@@ -90,10 +100,13 @@ func generateHttpFilterLocalRateLimitPatch() *networking.EnvoyFilter_EnvoyConfig
 							StructValue: &structpb.Struct{
 								Fields: map[string]*structpb.Value{
 									util.Struct_Any_AtType: {
+										Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_UdpaTypedStruct},
+									},
+									util.Struct_Any_TypedUrl: {
 										Kind: &structpb.Value_StringValue{StringValue: util.TypeUrl_EnvoyLocalRatelimit},
 									},
-									model.EnvoyStatPrefix: {
-										Kind: &structpb.Value_StringValue{StringValue: model.EnvoyHttpLocalRateLimiterStatPrefix },
+									util.Struct_Any_Value: {
+										Kind: &structpb.Value_StructValue{StructValue: local},
 									},
 								},
 							},
