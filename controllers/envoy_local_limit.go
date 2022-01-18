@@ -251,6 +251,11 @@ func generateTokenBucket(item *microservicev1alpha2.SmartLimitDescriptor) *envoy
 
 // TODO: outbound host:port
 func generateVhostName(target *microservicev1alpha2.SmartLimitDescriptor_Target) string {
+	// if port is not set, means allow any
+	if target == nil || target.Port == 0 {
+		return model.AllowAllPort
+	}
+
 	direction := target.Direction
 	if direction == "" {
 		direction = model.Inbound
@@ -332,11 +337,11 @@ func generateEnvoyLocalRateLimitEnforced() *envoy_core_v3.RuntimeFractionalPerce
 }
 
 func generateEnvoyVhostMatch(vhostName string) *networking.EnvoyFilter_EnvoyConfigObjectMatch {
-	return &networking.EnvoyFilter_EnvoyConfigObjectMatch{
+	match := &networking.EnvoyFilter_EnvoyConfigObjectMatch{
+		Context: networking.EnvoyFilter_SIDECAR_INBOUND,
 		ObjectTypes: &networking.EnvoyFilter_EnvoyConfigObjectMatch_RouteConfiguration{
 			RouteConfiguration: &networking.EnvoyFilter_RouteConfigurationMatch{
 				Vhost: &networking.EnvoyFilter_RouteConfigurationMatch_VirtualHostMatch{
-					Name: vhostName,
 					Route: &networking.EnvoyFilter_RouteConfigurationMatch_RouteMatch{
 						Name: "default",
 					},
@@ -344,6 +349,16 @@ func generateEnvoyVhostMatch(vhostName string) *networking.EnvoyFilter_EnvoyConf
 			},
 		},
 	}
+	if vhostName != "" {
+		config, ok := match.ObjectTypes.(*networking.EnvoyFilter_EnvoyConfigObjectMatch_RouteConfiguration)
+		if !ok {
+			log.Errorf("can not be here")
+			return match
+		}
+		config.RouteConfiguration.Vhost.Name = vhostName
+	}
+
+	return match
 }
 
 func generatePerFilterPatch(local *structpb.Struct) *networking.EnvoyFilter_Patch {

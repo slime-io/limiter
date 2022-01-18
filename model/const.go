@@ -15,6 +15,9 @@ const (
 
 	Inbound = "inbound"
 
+	// AllowAllPort use the implicit semantic "empty means match-all"
+	AllowAllPort = ""
+
 	GlobalSmartLimiter = "global"
 
 	RateLimitService = "outbound|18081||rate-limit.istio-system.svc.cluster.local"
