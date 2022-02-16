@@ -7,6 +7,9 @@ package controllers
 
 import (
 	"fmt"
+	"hash/adler32"
+	"strconv"
+
 	envoy_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoy_config_route_v3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	envoy_ratelimit_v3 "github.com/envoyproxy/go-control-plane/envoy/extensions/common/ratelimit/v3"
@@ -16,17 +19,15 @@ import (
 	structpb "github.com/gogo/protobuf/types"
 	"github.com/golang/protobuf/ptypes/duration"
 	"github.com/golang/protobuf/ptypes/wrappers"
-	"hash/adler32"
+
 	networking "istio.io/api/networking/v1alpha3"
 	"k8s.io/apimachinery/pkg/types"
 	"slime.io/slime/framework/util"
 	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
 	"slime.io/slime/modules/limiter/model"
-	"strconv"
 )
 
 func generateHttpRouterPatch(descriptors []*microservicev1alpha2.SmartLimitDescriptor, loc types.NamespacedName) ([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, error) {
-
 	patches := make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, 0)
 	route2RateLimitsActions := make(map[string][]*envoy_config_route_v3.RateLimit_Action)
 
@@ -75,13 +76,12 @@ func generateHttpRouterPatch(descriptors []*microservicev1alpha2.SmartLimitDescr
 
 // only enable local rate limit
 func generateHttpFilterLocalRateLimitPatch() *networking.EnvoyFilter_EnvoyConfigObjectPatch {
-
 	localRateLimit := &envoy_extensions_filters_http_local_ratelimit_v3.LocalRateLimit{
-		StatPrefix:     util.Struct_EnvoyLocalRateLimit_Limiter,
+		StatPrefix: util.Struct_EnvoyLocalRateLimit_Limiter,
 	}
 	local, err := util.MessageToStruct(localRateLimit)
 	if err != nil {
-		log.Errorf("can not be here, convert message to struct err,%+v",err.Error())
+		log.Errorf("can not be here, convert message to struct err,%+v", err.Error())
 		return nil
 	}
 
@@ -120,7 +120,6 @@ func generateHttpFilterLocalRateLimitPatch() *networking.EnvoyFilter_EnvoyConfig
 }
 
 func generateLocalRateLimitPerFilterPatch(descriptors []*microservicev1alpha2.SmartLimitDescriptor, loc types.NamespacedName) []*networking.EnvoyFilter_EnvoyConfigObjectPatch {
-
 	patches := make([]*networking.EnvoyFilter_EnvoyConfigObjectPatch, 0)
 	route2Descriptors := make(map[string][]*microservicev1alpha2.SmartLimitDescriptor)
 	for _, descriptor := range descriptors {
@@ -180,7 +179,7 @@ func generateRouteRateLimitAction(descriptor *microservicev1alpha2.SmartLimitDes
 			header.Name = match.Name
 			header.InvertMatch = generateInvertMatch(match)
 			switch {
-			case match.RegexMatch != "" :
+			case match.RegexMatch != "":
 				header.HeaderMatchSpecifier = generateSafeRegexMatch(match)
 			case match.ExactMatch != "":
 				header.HeaderMatchSpecifier = generateExactMatch(match)
@@ -208,7 +207,6 @@ func generateRouteRateLimitAction(descriptor *microservicev1alpha2.SmartLimitDes
 }
 
 func generateLocalRateLimitDescriptors(descriptors []*microservicev1alpha2.SmartLimitDescriptor, loc types.NamespacedName) []*envoy_ratelimit_v3.LocalRateLimitDescriptor {
-
 	localRateLimitDescriptors := make([]*envoy_ratelimit_v3.LocalRateLimitDescriptor, 0)
 	for _, item := range descriptors {
 		entries := generateLocalRateLimitDescriptorEntries(item, loc)
@@ -222,7 +220,6 @@ func generateLocalRateLimitDescriptors(descriptors []*microservicev1alpha2.Smart
 }
 
 func generateLocalRateLimitDescriptorEntries(item *microservicev1alpha2.SmartLimitDescriptor, loc types.NamespacedName) []*envoy_ratelimit_v3.RateLimitDescriptor_Entry {
-
 	entry := &envoy_ratelimit_v3.RateLimitDescriptor_Entry{}
 	if item.CustomKey != "" && item.CustomValue != "" {
 		entry.Key = item.CustomKey
@@ -274,7 +271,7 @@ func generateSafeRegexMatch(match *microservicev1alpha2.SmartLimitDescriptor_Hea
 			EngineType: &envoy_match_v3.RegexMatcher_GoogleRe2{
 				GoogleRe2: &envoy_match_v3.RegexMatcher_GoogleRE2{},
 			},
-			Regex:      match.RegexMatch,
+			Regex: match.RegexMatch,
 		},
 	}
 }
@@ -298,7 +295,6 @@ func generateInvertMatch(match *microservicev1alpha2.SmartLimitDescriptor_Header
 func generatePresentMatch(match *microservicev1alpha2.SmartLimitDescriptor_HeaderMatcher) *envoy_config_route_v3.HeaderMatcher_PresentMatch {
 	return &envoy_config_route_v3.HeaderMatcher_PresentMatch{PresentMatch: match.PresentMatch}
 }
-
 
 // TODO
 func generateCustomTokenBucket(maxTokens, tokensPerFill, second int) *envoy_type_v3.TokenBucket {
@@ -326,7 +322,6 @@ func generateEnvoyLocalRateLimitEnabled() *envoy_core_v3.RuntimeFractionalPercen
 //  % of requests that will enforce the local rate limit decision for a given route_key specified in the local rate limit configuration.
 // Defaults to 0. This can be used to test what would happen before fully enforcing the outcome.
 func generateEnvoyLocalRateLimitEnforced() *envoy_core_v3.RuntimeFractionalPercent {
-
 	return &envoy_core_v3.RuntimeFractionalPercent{
 		RuntimeKey: util.Struct_EnvoyLocalRateLimit_Enforced,
 		DefaultValue: &envoy_type_v3.FractionalPercent{
@@ -395,4 +390,3 @@ func generatePerFilterPatch(local *structpb.Struct) *networking.EnvoyFilter_Patc
 		},
 	}
 }
-

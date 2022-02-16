@@ -2,6 +2,8 @@ package controllers
 
 import (
 	"fmt"
+	"strconv"
+
 	envoy_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoy_config_ratelimit_v3 "github.com/envoyproxy/go-control-plane/envoy/config/ratelimit/v3"
 	structpb "github.com/gogo/protobuf/types"
@@ -10,7 +12,6 @@ import (
 	"slime.io/slime/framework/util"
 	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
 	"slime.io/slime/modules/limiter/model"
-	"strconv"
 )
 
 func generateEnvoyHttpFilterGlobalRateLimitPatch(server string) *networking.EnvoyFilter_EnvoyConfigObjectPatch {
@@ -145,7 +146,6 @@ func calculateQuotaPerUnit(descriptor *microservicev1alpha2.SmartLimitDescriptor
 	}
 	return quota, unit, nil
 }
-
 
 func getRateLimiterServerCluster(server string) string {
 	if server == "" {

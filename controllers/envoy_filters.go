@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+
 	networking "istio.io/api/networking/v1alpha3"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -15,8 +16,8 @@ import (
 
 func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.SmartLimiterSpec,
 	material map[string]string, loc types.NamespacedName) (
-	map[string]*networking.EnvoyFilter, map[string]*microservicev1alpha2.SmartLimitDescriptors, []*model.Descriptor,error) {
-
+	map[string]*networking.EnvoyFilter, map[string]*microservicev1alpha2.SmartLimitDescriptors, []*model.Descriptor, error,
+) {
 	materialInterface := util.MapToMapInterface(material)
 	setsEnvoyFilter := make(map[string]*networking.EnvoyFilter)
 	setsSmartLimitDescriptor := make(map[string]*microservicev1alpha2.SmartLimitDescriptors)
@@ -41,7 +42,7 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 		} else {
 			log.Errorf("get svc %s:%s err: %+v", loc.Name, loc.Namespace, err.Error())
 		}
-		return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors,err
+		return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors, err
 	}
 	svcSelector := svc.Spec.Selector
 
@@ -55,7 +56,7 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 			for _, des := range setDescriptor.Descriptor_ {
 				// update the EnvoyFilter when condition value is true after calculate
 				if shouldUpdate, err := util.CalculateTemplateBool(des.Condition, materialInterface); err != nil {
-					log.Errorf("calaulate %s condition err, %+v",des.Condition,err.Error())
+					log.Errorf("calaulate %s condition err, %+v", des.Condition, err.Error())
 					continue
 				} else if !shouldUpdate {
 					log.Infof("the value of condition %s is false", des.Condition)
@@ -63,9 +64,9 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 					// update
 					if des.Action != nil {
 						if rateLimitValue, err := util.CalculateTemplate(des.Action.Quota, materialInterface); err != nil {
-							log.Errorf("calculate quota %s err, %+v",des.Action.Quota,err.Error())
+							log.Errorf("calculate quota %s err, %+v", des.Action.Quota, err.Error())
 						} else {
-							//log.Infof("after calculate, the quota %s is %d",des.Action.Quota,rateLimitValue)
+							// log.Infof("after calculate, the quota %s is %d",des.Action.Quota,rateLimitValue)
 							validDescriptor.Descriptor_ = append(validDescriptor.Descriptor_, &microservicev1alpha2.SmartLimitDescriptor{
 								Action: &microservicev1alpha2.SmartLimitDescriptor_Action{
 									Quota:        fmt.Sprintf("%d", rateLimitValue),
@@ -81,7 +82,7 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 			}
 
 			if len(validDescriptor.Descriptor_) == 0 {
-				log.Infof("not matchd descriptor in %s",set.Name)
+				log.Infof("not matchd descriptor in %s", set.Name)
 				setsEnvoyFilter[set.Name] = nil
 			} else {
 				// prepare to generate ef according the descriptor in validDescriptor
@@ -89,7 +90,7 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 				for k, v := range set.Labels {
 					selector[k] = v
 				}
-				ef := descriptorsToEnvoyFilter(validDescriptor.Descriptor_, selector, loc,rls)
+				ef := descriptorsToEnvoyFilter(validDescriptor.Descriptor_, selector, loc, rls)
 				setsEnvoyFilter[set.Name] = ef
 				setsSmartLimitDescriptor[set.Name] = validDescriptor
 
@@ -98,11 +99,10 @@ func (r *SmartLimiterReconciler) GenerateEnvoyConfigs(spec microservicev1alpha2.
 			}
 		}
 	}
-	return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors,nil
+	return setsEnvoyFilter, setsSmartLimitDescriptor, globalDescriptors, nil
 }
 
 func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha2.SmartLimitDescriptor, labels map[string]string, loc types.NamespacedName, rls string) *networking.EnvoyFilter {
-
 	ef := &networking.EnvoyFilter{
 		WorkloadSelector: &networking.WorkloadSelector{
 			Labels: labels,
@@ -153,7 +153,6 @@ func descriptorsToEnvoyFilter(descriptors []*microservicev1alpha2.SmartLimitDesc
 }
 
 func descriptorsToGlobalRateLimit(descriptors []*microservicev1alpha2.SmartLimitDescriptor, loc types.NamespacedName) []*model.Descriptor {
-
 	globalDescriptors := make([]*microservicev1alpha2.SmartLimitDescriptor, 0)
 	for _, descriptor := range descriptors {
 		if descriptor.Action.Strategy == model.GlobalSmartLimiter {
