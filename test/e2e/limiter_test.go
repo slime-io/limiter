@@ -1,20 +1,21 @@
 package e2e
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
 	"github.com/onsi/ginkgo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"os"
-	"path/filepath"
+
 	"slime.io/slime/framework/test/e2e/framework"
 	e2epod "slime.io/slime/framework/test/e2e/framework/pod"
 	"slime.io/slime/framework/test/e2e/framework/testfiles"
-	"strings"
-	"time"
 )
 
 var _ = ginkgo.Describe("SmartLimiter e2e test", func() {
-
 	f := framework.NewDefaultFramework("limiter")
 	f.SkipNamespaceCreation = true
 
@@ -32,7 +33,7 @@ var _ = ginkgo.Describe("SmartLimiter e2e test", func() {
 	ginkgo.It("all", func() {
 		_, err := f.CreateNamespace(nsSlime, nil)
 		framework.ExpectNoError(err)
-		_, err = f.CreateNamespace(nsApps, map[string]string{istioRevKey: substituteValue("istioRevValue", istioRevValue),"istio-injection":"enabled"})
+		_, err = f.CreateNamespace(nsApps, map[string]string{istioRevKey: substituteValue("istioRevValue", istioRevValue), "istio-injection": "enabled"})
 		framework.ExpectNoError(err)
 		createSlimeBoot(f)
 		createSlimeModuleLimiter(f)
@@ -50,11 +51,9 @@ var _ = ginkgo.Describe("SmartLimiter e2e test", func() {
 		createSmartLimiter(f)
 		limiterTackEffect(f)
 	})
-
 })
 
 func createSlimeBoot(f *framework.Framework) {
-
 	crdYaml := readFile(test, "init/crds.yaml")
 	framework.RunKubectlOrDieInput("", crdYaml, "create", "-f", "-")
 	defer func() {
@@ -92,7 +91,6 @@ func createSlimeBoot(f *framework.Framework) {
 }
 
 func createSlimeModuleLimiter(f *framework.Framework) {
-
 	cs := f.ClientSet
 	slimebootLimitYaml := readFile(test, "samples/limiter/slimeboot_limiter.yaml")
 	slimebootLimitYaml = strings.ReplaceAll(slimebootLimitYaml, "{{limitTag}}", substituteValue("limitTag", limitTag))
@@ -252,5 +250,5 @@ func cleanupKubectlInputs(ns string, fileContents string, selectors ...string) {
 	// support backward compatibility : file paths or raw json - since we are removing file path
 	// dependencies from this test.
 	framework.RunKubectlOrDieInput(ns, fileContents, "delete", "--grace-period=0", "--force", "-f", "-")
-	//assertCleanup(ns, selectors...)
+	// assertCleanup(ns, selectors...)
 }

@@ -2,6 +2,7 @@ package module
 
 import (
 	"os"
+
 	"slime.io/slime/framework/model/module"
 	"slime.io/slime/modules/limiter/model"
 
@@ -14,7 +15,6 @@ import (
 	"slime.io/slime/framework/apis/config/v1alpha1"
 	"slime.io/slime/framework/bootstrap"
 	istiocontroller "slime.io/slime/framework/controllers"
-	"slime.io/slime/framework/util"
 	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
 	"slime.io/slime/modules/limiter/controllers"
 )
@@ -45,27 +45,22 @@ func (m *Module) InitScheme(scheme *runtime.Scheme) error {
 }
 
 func (m *Module) InitManager(mgr manager.Manager, env bootstrap.Environment, cbs module.InitCallbacks) error {
-	cfg := &m.config
-	if env.Config != nil && env.Config.Limiter != nil {
-		cfg = env.Config.Limiter
-	}
-
-	rec := controllers.NewReconciler(cfg, mgr, &env)
-	if err := rec.SetupWithManager(mgr); err != nil {
+	reconciler := controllers.NewReconciler(mgr, env)
+	if err := reconciler.SetupWithManager(mgr); err != nil {
 		log.Errorf("unable to create controller SmartLimiter, %+v", err)
-		util.Fatal()
-		return nil
+		os.Exit(1)
 	}
 
 	// add dr reconcile
 	if err := (&istiocontroller.DestinationRuleReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Env: &env,
+		Env:    &env,
 	}).SetupWithManager(mgr); err != nil {
 		log.Errorf("unable to create controller DestinationRule, %+v", err)
 		os.Exit(1)
 	}
 
+	log.Infof("init manager successful")
 	return nil
 }

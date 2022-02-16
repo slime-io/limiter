@@ -8,6 +8,10 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
+
 	"gopkg.in/yaml.v2"
 	networking "istio.io/api/networking/v1alpha3"
 	v1 "k8s.io/api/core/v1"
@@ -15,34 +19,86 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/json"
-	"reflect"
+
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"slime.io/slime/framework/apis/networking/v1alpha3"
 	slime_model "slime.io/slime/framework/model"
-	event_source "slime.io/slime/framework/model/source"
+	"slime.io/slime/framework/model/metric"
 	"slime.io/slime/framework/util"
 	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
 	"slime.io/slime/modules/limiter/model"
-	"strings"
 )
 
-func (r *SmartLimiterReconciler) WatchSource(stop <-chan struct{}) {
-	go func() {
-		for {
-			select {
-			case <-stop:
+// WatchMetric consume metric from chan, which is produced by producer
+func (r *SmartLimiterReconciler) WatchMetric() {
+	log := log.WithField("reporter", "SmartLimiterReconciler").WithField("function", "WatchMetric")
+	log.Infof("start watching metric")
+
+	for {
+		select {
+		case metric, ok := <-r.watcherMetricChan:
+			if !ok {
+				log.Warningf("watcher mertic channel closed, break process loop")
 				return
-			case e := <-r.eventChan:
-				switch e.EventType {
-				case event_source.Update, event_source.Add:
-					if _, err := r.Refresh(reconcile.Request{NamespacedName: e.Loc}, e.Info); err != nil {
-						log.Errorf("error: %+v", err)
-					}
+			}
+			log.Debugf("get metric from watcherMetricChan, %+v", metric)
+			r.ConsumeMetric(metric)
+		case metric, ok := <-r.tickerMetricChan:
+			if !ok {
+				log.Warningf("ticker metric channel closed, break process loop")
+				return
+			}
+			log.Debugf("get metric from tickerMetricChan, %+v", metric)
+			r.ConsumeMetric(metric)
+		}
+	}
+}
+
+func (r *SmartLimiterReconciler) ConsumeMetric(metricMap metric.Metric) {
+	for metaInfo, results := range metricMap {
+		Info := make(map[string]string)
+		meta := &StaticMeta{}
+		if err := json.Unmarshal([]byte(metaInfo), meta); err != nil {
+			log.Errorf("unmarshal static meta info err, %+v", err.Error())
+			continue
+		}
+		// exact info from meta
+		namespace, name := meta.Namespace, meta.Name
+		loc := types.NamespacedName{Namespace: namespace, Name: name}
+		nPod, isGroup := meta.NPod, meta.IsGroup
+
+		for _, result := range results {
+			metricName := result.Name
+			metricValue := ""
+
+			if !isGroup[metricName] {
+				if len(result.Value) != 1 {
+					continue
 				}
+				for _, value := range result.Value {
+					metricValue = value
+				}
+				Info[metricName] = metricValue
+			} else {
+				Info = result.Value
 			}
 		}
-	}()
+
+		// record the number of pods , specified by subset
+		for subset, number := range nPod {
+			if number == 0 {
+				continue
+			}
+			Info[subset] = strconv.Itoa(number)
+		}
+		log.Debugf("exact metric info, %v", Info)
+
+		// use info to refresh SmartLimiter's status
+		if _, err := r.Refresh(reconcile.Request{NamespacedName: loc}, Info); err != nil {
+			log.Errorf("refresh error:%v", err)
+		}
+	}
 }
 
 func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[string]string) (reconcile.Result, error) {
@@ -87,7 +143,6 @@ func (r *SmartLimiterReconciler) Refresh(request reconcile.Request, args map[str
 
 // refresh envoy filters and configmap
 func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLimiter) (reconcile.Result, error) {
-
 	var err error
 	loc := types.NamespacedName{
 		Namespace: instance.Namespace,
@@ -103,9 +158,9 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLim
 	var descriptor map[string]*microservicev1alpha2.SmartLimitDescriptors
 	var gdesc []*model.Descriptor
 
-	efs, descriptor, gdesc,err = r.GenerateEnvoyConfigs(spec, material, loc)
+	efs, descriptor, gdesc, err = r.GenerateEnvoyConfigs(spec, material, loc)
 	if err != nil {
-		return reconcile.Result{},err
+		return reconcile.Result{}, err
 	}
 	for k, ef := range efs {
 		var efcr *v1alpha3.EnvoyFilter
@@ -136,7 +191,11 @@ func (r *SmartLimiterReconciler) refresh(instance *microservicev1alpha2.SmartLim
 			log.Errorf("generated/deleted EnvoyFilter %s failed:%+v", efcr.Name, err)
 		}
 	}
-	refreshConfigMap(gdesc, r, loc)
+	if r.env.Config != nil && r.env.Config.Limiter != nil && !r.env.Config.Limiter.GetDisableGlobalRateLimit() {
+		refreshConfigMap(gdesc, r, loc)
+	} else {
+		log.Info("global rate limiter is closed")
+	}
 	instance.Status = microservicev1alpha2.SmartLimiterStatus{
 		RatelimitStatus: descriptor,
 		MetricStatus:    material,
@@ -175,7 +234,6 @@ func (r *SmartLimiterReconciler) getMaterial(loc types.NamespacedName) map[strin
 }
 
 func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLimiterReconciler, obj *v1alpha3.EnvoyFilter) (reconcile.Result, error) {
-
 	if err := controllerutil.SetControllerReference(instance, obj, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
@@ -203,23 +261,23 @@ func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLim
 			log.Infof("creating a new EnvoyFilter,%+v", loc)
 			return reconcile.Result{}, nil
 		} else {
-			log.Infof("envoyfilter %+v is not found, and obj spec is nil, skip ",loc)
+			log.Infof("envoyfilter %+v is not found, and obj spec is nil, skip ", loc)
 		}
 	} else {
 
 		if slime_model.IstioRevFromLabel(found.Labels) != istioRev {
 			log.Errorf("existing envoyfilter %v istioRev %s but our %s, skip ...",
 				loc, slime_model.IstioRevFromLabel(found.Labels), istioRev)
-			return reconcile.Result{},nil
+			return reconcile.Result{}, nil
 		}
 
-		foundSpec,err := json.Marshal(found.Spec)
+		foundSpec, err := json.Marshal(found.Spec)
 		if err != nil {
-			log.Errorf("marshal found.spec err: %+v",err)
+			log.Errorf("marshal found.spec err: %+v", err)
 		}
-		objSpec,err := json.Marshal(obj.Spec)
+		objSpec, err := json.Marshal(obj.Spec)
 		if err != nil {
-			log.Errorf("marshal obj.spec err: %+v",err)
+			log.Errorf("marshal obj.spec err: %+v", err)
 		}
 		// spec is not nil , update
 		if obj.Spec != nil {
@@ -227,7 +285,7 @@ func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLim
 				obj.ResourceVersion = found.ResourceVersion
 				err := r.Client.Update(context.TODO(), obj)
 				if err != nil {
-					log.Errorf("update envoyfilter err: %+v",err.Error())
+					log.Errorf("update envoyfilter err: %+v", err.Error())
 					return reconcile.Result{}, err
 				}
 				log.Infof("Update a new EnvoyFilter succeed,%v", loc)
@@ -248,12 +306,10 @@ func refreshEnvoyFilter(instance *microservicev1alpha2.SmartLimiter, r *SmartLim
 
 // if configmap rate-limit-config not exist, ratelimit server will not running
 func refreshConfigMap(desc []*model.Descriptor, r *SmartLimiterReconciler, serviceLoc types.NamespacedName) {
-
 	loc := getConfigMapNamespaceName()
 
 	found := &v1.ConfigMap{}
 	err := r.Client.Get(context.TODO(), loc, found)
-
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Errorf("configmap %s:%s is not found, can not refresh configmap", loc.Namespace, loc.Name)

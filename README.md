@@ -55,7 +55,7 @@ spec:
             seconds: 1
           quota: "10"
           strategy: "single"
-        condition: "{{.v1.cpu.sum}}>10"
+        condition: "{{._base.cpu.sum}}>10"
         target:
           port: 9080
 ~~~
