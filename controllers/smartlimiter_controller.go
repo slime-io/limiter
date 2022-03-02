@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"slime.io/slime/framework/apis/config/v1alpha1"
 	"slime.io/slime/framework/bootstrap"
 	slime_model "slime.io/slime/framework/model"
 	"slime.io/slime/framework/model/metric"
@@ -46,7 +45,7 @@ type SmartLimiterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	cfg    *v1alpha1.Limiter
+	cfg    *microservicev1alpha2.Limiter
 	env    bootstrap.Environment
 	scheme *runtime.Scheme
 
