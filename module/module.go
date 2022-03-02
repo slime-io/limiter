@@ -12,7 +12,6 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	istioapi "slime.io/slime/framework/apis"
-	"slime.io/slime/framework/apis/config/v1alpha1"
 	"slime.io/slime/framework/bootstrap"
 	istiocontroller "slime.io/slime/framework/controllers"
 	microservicev1alpha2 "slime.io/slime/modules/limiter/api/v1alpha2"
@@ -20,7 +19,7 @@ import (
 )
 
 type Module struct {
-	config v1alpha1.Limiter
+	config microservicev1alpha2.Limiter
 }
 
 func (m *Module) Name() string {
