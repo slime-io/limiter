@@ -65,9 +65,11 @@ spec:
     repository: docker.io/slimeio/slime-limiter
     tag: v0.3
   module:
-    - limiter:
-        backend: 1
+    - name: limiter # custom value
+      kind: limiter # should be "limiter"
       enable: true
+      general: # replace previous "limiter" field
+        backend: 1
       metric:
         prometheus:
           address: http://prometheus.istio-system:9090
@@ -84,7 +86,6 @@ spec:
         k8s:
           handlers:
             - pod # inline
-      name: limiter
 ```
 
 In the above list, we have configured prometheus as the monitoring source by default. prometheus.handlers defines the monitoring metrics that we want to get from prometheus , which can be used as thresholds for some adaptive algorithms to achieve adaptive rate limiting.

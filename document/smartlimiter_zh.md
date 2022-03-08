@@ -66,9 +66,11 @@ spec:
     repository: docker.io/slimeio/slime-limiter
     tag: v0.3
   module:
-    - limiter:
-        backend: 1
+    - name: limiter # custom value
+      kind: limiter # should be "limiter"
       enable: true
+      general: # replace previous "limiter" field
+        backend: 1
       metric:
         prometheus:
           address: http://prometheus.istio-system:9090
@@ -85,7 +87,6 @@ spec:
         k8s:
           handlers:
             - pod # inline
-      name: limiter
 ```
 
 在上面清单中，我们默认配置了prometheus作为监控源，prometheus.handlers定义了希望从监控中获取的监控指标，这些监控指标可以作为一些自适应算法的阈值，从而达到自适应限流。
