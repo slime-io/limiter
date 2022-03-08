@@ -22,7 +22,7 @@ type Module struct {
 	config microservicev1alpha2.Limiter
 }
 
-func (m *Module) Name() string {
+func (m *Module) Kind() string {
 	return model.ModuleName
 }
 
@@ -41,6 +41,11 @@ func (m *Module) InitScheme(scheme *runtime.Scheme) error {
 		}
 	}
 	return nil
+}
+
+func (m *Module) Clone() module.Module {
+	ret := *m
+	return &ret
 }
 
 func (m *Module) InitManager(mgr manager.Manager, env bootstrap.Environment, cbs module.InitCallbacks) error {
