@@ -64,7 +64,7 @@ spec:
   image:
     pullPolicy: Always
     repository: docker.io/slimeio/slime-limiter
-    tag: v0.3
+    tag: v0.2.0_linux_amd64
   module:
     - name: limiter # custom value
       kind: limiter # should be "limiter"
