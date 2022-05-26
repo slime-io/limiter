@@ -17,16 +17,36 @@ option go_package = "slime.io/slime/slime-modules/limiter/api/v1alpha2";
 //  rls: ""
 //  sets:
 //    _base:
-//      descriptors:
+//      descriptor:
 //      - action:
 //          fill_interval:
 //            seconds: 60
-//          quota: "60/{{._base.pod}}"
-//          strategy: "average"
-//          //rate_limit_service: "outbound|18081||rate-limit.istio-system.svc.cluster.local"
+//          quota: "10"
+//          strategy: "single"
 //        conditon: "true"
 //        target:
 //          port: 9080
+
+
+//apiVersion: microservice.slime.io/v1alpha2
+//kind: SmartLimiter
+//metadata:
+//  name: b
+//  namespace: powerful
+//spec:
+//  rls: ""
+//  sets:
+//    _base:
+//      descriptor:
+//      - action:
+//          fill_interval:
+//            seconds: 60
+//          quota: "10"
+//          strategy: "single"
+//        conditon: "true"
+//        target:
+//          direction: outbound
+//          route: a.test.com:80/r1
 
 
 message SmartLimiterSpec {
@@ -79,8 +99,8 @@ message SmartLimitDescriptor {
     message Target {
         string direction = 1;  // 进出
         int32 port = 2;
-        string route = 3;
-        string host = 4;
+        repeated string route = 3;
+        repeated string host = 4;
     }
 
     string condition = 1;

@@ -104,7 +104,6 @@ func (r *SmartLimiterReconciler) handleLocalEvent(loc types.NamespacedName) metr
 // example: handler is a map
 // cpu.max => max(container_cpu_usage_seconds_total{namespace="$namespace",pod=~"$pod_name",image=""})
 func (r *SmartLimiterReconciler) handlePrometheusEvent(loc types.NamespacedName) metric.QueryMap {
-
 	if r.env.Config == nil || r.env.Config.Metric == nil || r.env.Config.Metric.Prometheus == nil || r.env.Config.Metric.Prometheus.Handlers == nil {
 		log.Debugf("query handler is empty, skip query")
 		return nil
@@ -280,7 +279,6 @@ func replaceQueryString(metricName string, query string, typ v1alpha1.Prometheus
 }
 
 func newPrometheusSourceConfig(env bootstrap.Environment) (metric.PrometheusSourceConfig, error) {
-
 	if env.Config == nil || env.Config.Metric == nil || env.Config.Metric.Prometheus == nil {
 		return metric.PrometheusSourceConfig{}, stderrors.New("failure create prometheus client, empty prometheus config")
 	}
