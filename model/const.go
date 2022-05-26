@@ -15,6 +15,8 @@ const (
 
 	Inbound = "inbound"
 
+	Outbound = "outbound"
+
 	// AllowAllPort use the implicit semantic "empty means match-all"
 	AllowAllPort = ""
 
@@ -43,4 +45,6 @@ const (
 	MetricSourceType = "metric_source_type"
 
 	InlineMetricPod = "pod"
+
+	InboundDefaultRoute = "default"
 )
