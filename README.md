@@ -1,3 +1,7 @@
+**NOTE: The project has been migrated to** [slime-io/slime](https://github.com/slime-io/slime/tree/master/staging/src/slime.io/slime/modules/limiter)
+
+---
+
 - [Overview](#overview)
   - [Background](#background)
   - [Features](#features)
@@ -7,7 +11,7 @@
   - [Sample](#sample)
   - [Dependencies](#dependencies)
 # Overview
-
+  
 [中文](./README_ZH.md)
 
 ## Background
