@@ -1,3 +1,7 @@
+**注意: 本项目已经被迁移至 [slime-io/slime](https://github.com/slime-io/slime/tree/master/staging/src/slime.io/slime/modules/limiter)**
+
+---
+
 - [自适应限流概述](#自适应限流概述)
   - [背景](#背景)
   - [特点](#特点)
